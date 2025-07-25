@@ -2,7 +2,7 @@
 import sys
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -439,13 +439,17 @@ class CitySelectionDialog(QDialog):
 class PrayerTimeWorker(QThread):
     data_received = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
+    offline_data_loaded = pyqtSignal(dict, int)  # prayer_times, days_remaining
     
-    def __init__(self, city_id=101):
+    def __init__(self, city_id=101, city_name="Tangier"):
         super().__init__()
         self.city_id = city_id
+        self.city_name = city_name
+        self.storage_file = os.path.join(os.path.expanduser('~'), 'Documents', f'salah_times_{city_name.lower()}.json')
     
     def run(self):
         try:
+            # Try to fetch online data
             url = f'https://www.yabiladi.com/prieres/details/{self.city_id}/city.html'
             response = requests.get(url, timeout=10)
             response.raise_for_status()
@@ -456,9 +460,11 @@ class PrayerTimeWorker(QThread):
             if not prayer_table:
                 raise Exception("Prayer table not found")
             
+            # Fetch all prayer times for the month
             headers = [header.text.strip() for header in prayer_table.find_all('th')]
             rows = prayer_table.find_all('tr')[1:]
             
+            all_prayer_times = {}
             today = datetime.now().strftime('%d/%m')
             todays_prayers = None
             
@@ -466,26 +472,90 @@ class PrayerTimeWorker(QThread):
                 columns = row.find_all('td')
                 if columns:
                     date = columns[0].text.strip()
+                    prayer_data = {}
+                    for header, col in zip(headers, columns):
+                        prayer_data[header] = col.text.strip()
+                    all_prayer_times[date] = prayer_data
+                    
                     if date == today:
-                        todays_prayers = [col.text.strip() for col in columns]
-                        break
+                        todays_prayers = prayer_data
+            
+            # Save to JSON file
+            self.save_prayer_times(all_prayer_times)
             
             if todays_prayers:
-                prayer_times = {}
-                for header, time in zip(headers, todays_prayers):
-                    prayer_times[header] = time
-                self.data_received.emit(prayer_times)
+                self.data_received.emit(todays_prayers)
             else:
                 self.error_occurred.emit("No prayer times found for today")
                 
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            # Try to load offline data
+            offline_data = self.load_offline_data()
+            if offline_data:
+                today = datetime.now().strftime('%d/%m')
+                if today in offline_data['prayer_times']:
+                    days_remaining = self.calculate_days_remaining(offline_data['prayer_times'])
+                    self.offline_data_loaded.emit(offline_data['prayer_times'][today], days_remaining)
+                else:
+                    self.error_occurred.emit(f"Offline mode: No data for today ({str(e)})")
+            else:
+                self.error_occurred.emit(str(e))
+    
+    def save_prayer_times(self, prayer_times):
+        try:
+            os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
+            data = {
+                'city': self.city_name,
+                'last_updated': datetime.now().isoformat(),
+                'prayer_times': prayer_times
+            }
+            with open(self.storage_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error saving prayer times: {e}")
+    
+    def load_offline_data(self):
+        try:
+            if os.path.exists(self.storage_file):
+                with open(self.storage_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading offline data: {e}")
+        return None
+    
+    def calculate_days_remaining(self, prayer_times):
+        try:
+            today = datetime.now()
+            dates = list(prayer_times.keys())
+            
+            # Convert dates to datetime objects for comparison
+            date_objects = []
+            for date_str in dates:
+                try:
+                    day, month = map(int, date_str.split('/'))
+                    year = today.year
+                    # Handle year transition
+                    if month < today.month or (month == today.month and day < today.day):
+                        year += 1
+                    date_objects.append(datetime(year, month, day))
+                except:
+                    continue
+            
+            if date_objects:
+                last_date = max(date_objects)
+                days_remaining = (last_date - today).days + 1
+                return max(0, days_remaining)
+        except:
+            pass
+        return 0
 
 class ModernSalahApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.prayer_times = {}
         self.current_prayer = None
+        self.is_offline = False
+        self.days_remaining = 0
         self.config_file = os.path.expanduser('~/.salah_config.json')
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
@@ -840,12 +910,25 @@ class ModernSalahApp(QMainWindow):
         self.location_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.location_label)
         
+        # Offline indicator and settings in horizontal layout
+        controls_layout = QHBoxLayout()
+        
+        self.offline_indicator = QLabel("")
+        self.offline_indicator.setObjectName("offline_indicator")
+        self.offline_indicator.setAlignment(Qt.AlignCenter)
+        self.offline_indicator.setStyleSheet("color: #ff6b35; font-size: 12px; font-weight: bold;")
+        controls_layout.addWidget(self.offline_indicator)
+        
         settings_btn = QPushButton("⚙️")
         settings_btn.setObjectName("settings_btn")
         settings_btn.clicked.connect(self.show_settings)
         settings_btn.setFixedSize(30, 30)
         settings_btn.setCursor(Qt.PointingHandCursor)
-        layout.addWidget(settings_btn)
+        controls_layout.addWidget(settings_btn)
+        
+        controls_widget = QWidget()
+        controls_widget.setLayout(controls_layout)
+        layout.addWidget(controls_widget)
         
         return header
         
@@ -978,10 +1061,16 @@ class ModernSalahApp(QMainWindow):
         loading.setAlignment(Qt.AlignCenter)
         self.prayer_layout.addWidget(loading)
         
+        # Reset offline status
+        self.is_offline = False
+        self.days_remaining = 0
+        self.update_offline_indicator()
+        
         # Start worker thread
         city_id = CITIES.get(self.current_city, {'id': 101})['id']
-        self.worker = PrayerTimeWorker(city_id)
+        self.worker = PrayerTimeWorker(city_id, self.current_city)
         self.worker.data_received.connect(self.display_prayer_times)
+        self.worker.offline_data_loaded.connect(self.display_offline_prayer_times)
         self.worker.error_occurred.connect(self.show_error)
         self.worker.start()
         
@@ -993,6 +1082,18 @@ class ModernSalahApp(QMainWindow):
                 
     def display_prayer_times(self, prayer_times):
         self.prayer_times = prayer_times
+        self.is_offline = False
+        self.update_offline_indicator()
+        self._display_prayer_times_common(prayer_times)
+    
+    def display_offline_prayer_times(self, prayer_times, days_remaining):
+        self.prayer_times = prayer_times
+        self.is_offline = True
+        self.days_remaining = days_remaining
+        self.update_offline_indicator()
+        self._display_prayer_times_common(prayer_times)
+    
+    def _display_prayer_times_common(self, prayer_times):
         self.clear_prayer_layout()
         
         icons = {'Date': '📅', 'Fajr': '🌌', 'Sunrise': '🌞', 'Dohr': '🔆', 
@@ -1028,6 +1129,15 @@ class ModernSalahApp(QMainWindow):
         
         self.update_next_prayer()
         self.update_countdown()
+    
+    def update_offline_indicator(self):
+        if self.is_offline:
+            if self.days_remaining > 0:
+                self.offline_indicator.setText(f"📶 Offline - {self.days_remaining} days left")
+            else:
+                self.offline_indicator.setText("📶 Offline - Data expired")
+        else:
+            self.offline_indicator.setText("")
     
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)

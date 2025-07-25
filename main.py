@@ -12,8 +12,10 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
+import json
+import os
 
 # Cities and translations
 CITIES = {
@@ -69,6 +71,9 @@ class SalahTimesApp(App):
         self.current_language = 'en'
         self.current_city = 'Tangier'
         self.prayer_times = {}
+        self.is_offline = False
+        self.days_remaining = 0
+        self.storage_file = os.path.join(os.path.expanduser('~'), 'Documents', f'salah_times_{self.current_city.lower()}.json')
         
     def build(self):
         self.title = 'Salah Times'
@@ -93,6 +98,15 @@ class SalahTimesApp(App):
             color=(0.5, 0.5, 0.5, 1)
         )
         header_layout.add_widget(self.location_label)
+        
+        self.offline_indicator = Label(
+            text='',
+            font_size=dp(12),
+            color=(1, 0.4, 0.2, 1),
+            size_hint_y=None,
+            height=dp(20)
+        )
+        header_layout.add_widget(self.offline_indicator)
         
         main_layout.add_widget(header_layout)
         
@@ -149,6 +163,7 @@ class SalahTimesApp(App):
         
     def on_city_change(self, spinner, text):
         self.current_city = text
+        self.storage_file = os.path.join(os.path.expanduser('~'), 'Documents', f'salah_times_{self.current_city.lower()}.json')
         self.location_label.text = f'{self.current_city}, {self.tr("morocco")}'
         self.refresh_prayer_times()
         
