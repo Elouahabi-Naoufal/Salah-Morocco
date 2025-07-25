@@ -1179,13 +1179,15 @@ class ModernSalahApp(QMainWindow):
                     break
         
         if not next_prayer_time and prayers:
-            first_prayer = prayers[0]
-            next_prayer_time = self.parse_time(self.prayer_times[first_prayer]) + 24 * 60
+            first_prayer = prayers[0]  # This should be Fajr
+            fajr_time = self.parse_time(self.prayer_times[first_prayer])
+            # Calculate minutes until tomorrow's Fajr
+            minutes_until_midnight = (24 * 60) - current_time
+            remaining = minutes_until_midnight + fajr_time
+        else:
+            remaining = next_prayer_time - current_time if next_prayer_time else 0
         
-        if next_prayer_time:
-            remaining = next_prayer_time - current_time
-            if remaining < 0:
-                remaining += 24 * 60
+        if next_prayer_time or remaining > 0:
             
             hours = remaining // 60
             minutes = remaining % 60
