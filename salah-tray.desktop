@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Salah Times Tray
+Comment=Prayer times system tray indicator with notifications
+Exec=/home/manipulator/Documents/Apps/50_100/fetch_salah_time/run_tray.sh
+Icon=preferences-system-time
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
