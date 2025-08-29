@@ -446,74 +446,99 @@ class PrayerTimeWorker(QThread):
         super().__init__()
         self.city_id = city_id
         self.city_name = city_name
-        self.storage_file = os.path.join(os.path.expanduser('~'), 'Documents', f'salah_times_{city_name.lower()}.json')
+        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times')
+        self.storage_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
     
     def run(self):
-        try:
-            # Try to fetch online data
-            url = f'https://www.yabiladi.com/prieres/details/{self.city_id}/city.html'
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            prayer_table = soup.find('table')
-            
-            if not prayer_table:
-                raise Exception("Prayer table not found")
-            
-            # Fetch all prayer times for the month
-            headers = [header.text.strip() for header in prayer_table.find_all('th')]
-            rows = prayer_table.find_all('tr')[1:]
-            
-            all_prayer_times = {}
-            today = datetime.now().strftime('%d/%m')
-            todays_prayers = None
-            
-            for row in rows:
-                columns = row.find_all('td')
-                if columns:
-                    date = columns[0].text.strip()
-                    prayer_data = {}
-                    for header, col in zip(headers, columns):
-                        prayer_data[header] = col.text.strip()
-                    all_prayer_times[date] = prayer_data
-                    
-                    if date == today:
-                        todays_prayers = prayer_data
-            
-            # Save to JSON file
-            self.save_prayer_times(all_prayer_times)
-            
-            if todays_prayers:
-                self.data_received.emit(todays_prayers)
-            else:
-                self.error_occurred.emit("No prayer times found for today")
+        # Check internet connection first
+        if self.check_internet_connection():
+            try:
+                # Online mode: Update all cities data
+                self.update_all_cities_data()
                 
-        except Exception as e:
-            # Try to load offline data
-            offline_data = self.load_offline_data()
-            if offline_data:
+                # Load today's data for current city
                 today = datetime.now().strftime('%d/%m')
-                if today in offline_data['prayer_times']:
-                    days_remaining = self.calculate_days_remaining(offline_data['prayer_times'])
-                    self.offline_data_loaded.emit(offline_data['prayer_times'][today], days_remaining)
+                offline_data = self.load_offline_data()
+                if offline_data and today in offline_data['prayer_times']:
+                    self.data_received.emit(offline_data['prayer_times'][today])
                 else:
-                    self.error_occurred.emit(f"Offline mode: No data for today ({str(e)})")
-            else:
-                self.error_occurred.emit(str(e))
+                    self.error_occurred.emit("No prayer times found for today")
+                    
+            except Exception as e:
+                # Fallback to offline mode
+                self.load_offline_mode(str(e))
+        else:
+            # No internet: try offline mode
+            self.load_offline_mode("No internet connection")
     
-    def save_prayer_times(self, prayer_times):
+    def check_internet_connection(self):
         try:
-            os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
-            data = {
-                'city': self.city_name,
-                'last_updated': datetime.now().isoformat(),
-                'prayer_times': prayer_times
-            }
-            with open(self.storage_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error saving prayer times: {e}")
+            response = requests.get('https://www.yabiladi.com', timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def update_all_cities_data(self):
+        """Update prayer times for all cities"""
+        os.makedirs(self.data_folder, exist_ok=True)
+        
+        for city_name, city_data in CITIES.items():
+            try:
+                city_id = city_data['id']
+                url = f'https://www.yabiladi.com/prieres/details/{city_id}/city.html'
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                prayer_table = soup.find('table')
+                
+                if prayer_table:
+                    headers = [header.text.strip() for header in prayer_table.find_all('th')]
+                    rows = prayer_table.find_all('tr')[1:]
+                    
+                    all_prayer_times = {}
+                    for row in rows:
+                        columns = row.find_all('td')
+                        if columns:
+                            date = columns[0].text.strip()
+                            prayer_data = {}
+                            for header, col in zip(headers, columns):
+                                prayer_data[header] = col.text.strip()
+                            all_prayer_times[date] = prayer_data
+                    
+                    # Save city data
+                    city_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
+                    city_data_obj = {
+                        'city': city_name,
+                        'last_updated': datetime.now().isoformat(),
+                        'prayer_times': all_prayer_times
+                    }
+                    
+                    with open(city_file, 'w', encoding='utf-8') as f:
+                        json.dump(city_data_obj, f, ensure_ascii=False, indent=2)
+                        
+            except Exception as e:
+                print(f"Error updating {city_name}: {e}")
+                continue
+    
+    def load_offline_mode(self, error_msg):
+        """Load offline data or show error"""
+        if not os.path.exists(self.data_folder):
+            self.error_occurred.emit("No internet connection and no offline data available")
+            return
+            
+        offline_data = self.load_offline_data()
+        if offline_data:
+            today = datetime.now().strftime('%d/%m')
+            if today in offline_data['prayer_times']:
+                days_remaining = self.calculate_days_remaining(offline_data['prayer_times'])
+                self.offline_data_loaded.emit(offline_data['prayer_times'][today], days_remaining)
+            else:
+                self.error_occurred.emit(f"Offline mode: No data for today")
+        else:
+            self.error_occurred.emit("No internet connection and no offline data available")
+    
+
     
     def load_offline_data(self):
         try:
