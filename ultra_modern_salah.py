@@ -9,6 +9,7 @@ from PyQt5.QtGui import *
 import threading
 import json
 import os
+import subprocess
 
 # Translation dictionaries
 TRANSLATIONS = {
@@ -559,6 +560,7 @@ class ModernSalahApp(QMainWindow):
         self.config_file = os.path.expanduser('~/.salah_config.json')
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
+        self.tray_process = None
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_countdown)
@@ -567,6 +569,7 @@ class ModernSalahApp(QMainWindow):
         self.init_ui()
         self.update_all_ui_text()
         self.load_prayer_times()
+        self.start_tray_indicator()
         
     def load_language_config(self):
         if os.path.exists(self.config_file):
@@ -1321,6 +1324,28 @@ class ModernSalahApp(QMainWindow):
         error.setAlignment(Qt.AlignCenter)
         error.setWordWrap(True)
         self.prayer_layout.addWidget(error)
+    
+    def start_tray_indicator(self):
+        """Start the tray indicator if not already running"""
+        try:
+            # Check if tray indicator is already running
+            result = subprocess.run(['pgrep', '-f', 'salah_tray_indicator.py'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                return  # Already running
+            
+            # Start tray indicator
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            tray_script = os.path.join(script_dir, 'salah_tray_indicator.py')
+            
+            if os.path.exists(tray_script):
+                self.tray_process = subprocess.Popen([sys.executable, tray_script])
+        except Exception as e:
+            print(f"Could not start tray indicator: {e}")
+    
+    def closeEvent(self, event):
+        """Handle window close - don't close tray indicator"""
+        event.accept()  # Allow window to close, tray stays running
 
 def main():
     app = QApplication(sys.argv)
@@ -1329,6 +1354,9 @@ def main():
     app.setApplicationName("Salah Times")
     app.setApplicationVersion("1.0")
     app.setOrganizationName("Islamic Apps")
+    
+    # Don't quit when last window is closed (tray should keep running)
+    app.setQuitOnLastWindowClosed(False)
     
     window = ModernSalahApp()
     window.show()
