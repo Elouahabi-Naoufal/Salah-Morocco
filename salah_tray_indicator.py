@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from ultra_modern_salah import PrayerTimeWorker, CITIES, TRANSLATIONS
+import os
 
 class SalahTrayIndicator(QSystemTrayIcon):
     def __init__(self, parent=None):
@@ -26,6 +27,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Setup tray
         self.setup_tray()
         self.setup_timer()
+        self.setup_config_watcher()
         self.load_prayer_times()
         
     def load_config(self, key, default):
@@ -185,6 +187,31 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
         self.update_timer.start(1000)  # Update every second for live countdown
+    
+    def setup_config_watcher(self):
+        # Timer to check for config file changes
+        self.config_watcher = QTimer()
+        self.config_watcher.timeout.connect(self.check_config_changes)
+        self.config_watcher.start(2000)  # Check every 2 seconds
+        self.last_config_mtime = self.get_config_mtime()
+    
+    def get_config_mtime(self):
+        try:
+            return os.path.getmtime(self.config_file) if os.path.exists(self.config_file) else 0
+        except:
+            return 0
+    
+    def check_config_changes(self):
+        current_mtime = self.get_config_mtime()
+        if current_mtime != self.last_config_mtime:
+            self.last_config_mtime = current_mtime
+            new_language = self.load_config('language', 'en')
+            new_city = self.load_config('city', 'Tangier')
+            
+            if new_language != self.current_language or new_city != self.current_city:
+                self.current_language = new_language
+                self.current_city = new_city
+                self.load_prayer_times()  # Refresh prayer times
     
     def load_prayer_times(self):
         city_id = CITIES.get(self.current_city, {'id': 101})['id']

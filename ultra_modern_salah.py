@@ -940,18 +940,37 @@ class ModernSalahApp(QMainWindow):
         
         # Offline indicator and settings in horizontal layout
         controls_layout = QHBoxLayout()
+        controls_layout.setContentsMargins(0, 5, 0, 0)
         
         self.offline_indicator = QLabel("")
         self.offline_indicator.setObjectName("offline_indicator")
-        self.offline_indicator.setAlignment(Qt.AlignCenter)
+        self.offline_indicator.setAlignment(Qt.AlignLeft)
         self.offline_indicator.setStyleSheet("color: #ff6b35; font-size: 12px; font-weight: bold;")
         controls_layout.addWidget(self.offline_indicator)
+        
+        controls_layout.addStretch()  # Push settings button to the right
         
         settings_btn = QPushButton("⚙️")
         settings_btn.setObjectName("settings_btn")
         settings_btn.clicked.connect(self.show_settings)
-        settings_btn.setFixedSize(30, 30)
+        settings_btn.setFixedSize(35, 35)
         settings_btn.setCursor(Qt.PointingHandCursor)
+        settings_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 17px;
+                font-size: 16px;
+                color: white;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.3);
+            }
+        """)
         controls_layout.addWidget(settings_btn)
         
         controls_widget = QWidget()
