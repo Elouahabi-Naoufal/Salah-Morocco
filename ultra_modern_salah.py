@@ -1542,9 +1542,11 @@ class ModernSalahApp(QMainWindow):
                 card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
                 card.setStyleSheet(self.get_modern_stylesheet())  # Refresh styles
                 
-                # Update time text
+                # Update both prayer name and time text
                 for child in card.findChildren(QLabel):
-                    if child.property("class") == "prayer_time":
+                    if child.property("class") == "prayer_name":
+                        child.setText(self.tr_prayer(prayer))  # Update translated name
+                    elif child.property("class") == "prayer_time":
                         child.setText(time)
                         child.setStyleSheet("")  # Clear any error styling
         
