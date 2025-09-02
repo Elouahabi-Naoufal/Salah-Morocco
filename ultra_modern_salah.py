@@ -181,8 +181,8 @@ class SettingsDialog(QDialog):
         
     def init_ui(self):
         self.setWindowTitle(self.tr('settings'))
-        self.setMinimumSize(500, 600)
-        self.resize(500, 650)
+        self.setMinimumSize(600, 700)
+        self.resize(650, 750)
         self.setModal(True)
         self.setStyleSheet(self.get_modern_settings_stylesheet())
         
@@ -378,11 +378,12 @@ class SettingsDialog(QDialog):
                 border: 2px solid #e0e0e0;
                 border-bottom: none;
                 border-radius: 8px 8px 0 0;
-                padding: 12px 20px;
-                margin-right: 2px;
-                font-size: 14px;
+                padding: 15px 25px;
+                margin-right: 3px;
+                font-size: 15px;
                 font-weight: 500;
                 color: #666;
+                min-width: 120px;
             }
             
             .settings_tabs QTabBar::tab:selected {
@@ -401,10 +402,11 @@ class SettingsDialog(QDialog):
                 background: white;
                 border: 2px solid #e0e0e0;
                 border-radius: 8px;
-                padding: 8px 12px;
+                padding: 12px 16px;
                 font-size: 14px;
                 color: #333;
-                max-width: 80px;
+                min-width: 120px;
+                max-width: 150px;
             }
             
             .iqama_input:focus {
