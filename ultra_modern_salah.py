@@ -573,7 +573,7 @@ class SettingsDialog(QDialog):
         # Iqama inputs
         self.iqama_inputs = {}
         prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
-        icons = {'Fajr': '🌌', 'Dohr': '🔆', 'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        icons = {'Fajr': '☽', 'Dohr': '☉', 'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         for prayer in prayers:
             row = QWidget()
@@ -653,7 +653,7 @@ class SettingsDialog(QDialog):
         # Notification inputs
         self.notification_inputs = {}
         prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
-        icons = {'Fajr': '🌌', 'Dohr': '🔆', 'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        icons = {'Fajr': '☽', 'Dohr': '☉', 'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         for prayer in prayers:
             row = QWidget()
@@ -1900,8 +1900,8 @@ class ModernSalahApp(QMainWindow):
         
         # Create placeholder cards (use Chorok instead of Sunrise)
         prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
-        icons = {'Fajr': '🌙', 'Chorok': '🌅', 'Dohr': '☀️', 
-                'Asr': '🌇', 'Maghreb': '🌆', 'Isha': '🌃'}
+        icons = {'Fajr': '☽', 'Chorok': '☀', 'Dohr': '☉', 
+                'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         for i, prayer in enumerate(prayers):
             card = self.create_prayer_card_widget(prayer, icons[prayer], "--:--")

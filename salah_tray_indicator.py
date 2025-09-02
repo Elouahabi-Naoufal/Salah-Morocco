@@ -300,8 +300,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
         tooltip += "─" * 30 + "\n"
         
         # Add today's prayer times
-        icons = {'Fajr': '🌌', 'Sunrise': '🌞', 'Dohr': '🔆', 
-                'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        icons = {'Fajr': '☽', 'Sunrise': '☀', 'Dohr': '☉', 
+                'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         current_prayer = self.get_current_prayer()
         
@@ -363,8 +363,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.prayer_actions.clear()
         
         # Add prayer times
-        icons = {'Fajr': '🌌', 'Sunrise': '🌞', 'Dohr': '🔆', 
-                'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        icons = {'Fajr': '☽', 'Sunrise': '☀', 'Dohr': '☉', 
+                'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         current_prayer = self.get_current_prayer()
         
