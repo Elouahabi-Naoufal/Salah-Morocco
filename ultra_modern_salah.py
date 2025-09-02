@@ -173,7 +173,9 @@ class SettingsDialog(QDialog):
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
         self.geometry_file = os.path.join(self.config_dir, 'settings_geometry.json')
         self.iqama_config_file = os.path.join(self.config_dir, 'iqama_times.json')
+        self.notifications_config_file = os.path.join(self.config_dir, 'notifications.json')
         self.iqama_times = self.load_iqama_times()
+        self.notification_settings = self.load_notification_settings()
         self.init_ui()
         self.restore_geometry()
         
@@ -210,6 +212,10 @@ class SettingsDialog(QDialog):
         # Iqama tab
         iqama_tab = self.create_iqama_tab()
         self.tab_widget.addTab(iqama_tab, "⏰ Iqama Times")
+        
+        # Notifications tab
+        notifications_tab = self.create_notifications_tab()
+        self.tab_widget.addTab(notifications_tab, "🔔 Notifications")
         
         layout.addWidget(self.tab_widget, 1)
         
@@ -602,6 +608,177 @@ class SettingsDialog(QDialog):
         
         return tab
     
+    def create_notifications_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Notifications card
+        notifications_card = QWidget()
+        notifications_card.setProperty("class", "settings_card")
+        
+        card_layout = QVBoxLayout(notifications_card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(15)
+        
+        # Title
+        title = QLabel("Prayer Notification Settings")
+        title.setProperty("class", "section_label")
+        title.setWordWrap(True)
+        card_layout.addWidget(title)
+        
+        # Description
+        desc = QLabel("Configure notifications for each prayer time:")
+        desc.setStyleSheet("color: #666; font-size: 12px;")
+        desc.setWordWrap(True)
+        card_layout.addWidget(desc)
+        
+        # Notification inputs
+        self.notification_inputs = {}
+        prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        icons = {'Fajr': '🌌', 'Dohr': '🔆', 'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        
+        for prayer in prayers:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(15)
+            
+            # Prayer icon and name
+            prayer_info = QWidget()
+            info_layout = QHBoxLayout(prayer_info)
+            info_layout.setContentsMargins(0, 0, 0, 0)
+            info_layout.setSpacing(8)
+            
+            icon_label = QLabel(icons[prayer])
+            icon_label.setStyleSheet("font-size: 18px;")
+            info_layout.addWidget(icon_label)
+            
+            name_label = QLabel(self.tr_prayer(prayer))
+            name_label.setProperty("class", "iqama_label")
+            info_layout.addWidget(name_label)
+            info_layout.addStretch()
+            
+            row_layout.addWidget(prayer_info, 1)
+            
+            # Enable checkbox
+            enable_checkbox = QCheckBox("Enable")
+            enable_checkbox.setChecked(self.notification_settings.get(prayer, {}).get('enabled', True))
+            row_layout.addWidget(enable_checkbox)
+            
+            # Repeat count
+            repeat_label = QLabel("Repeat:")
+            repeat_label.setStyleSheet("color: #666; font-size: 12px;")
+            row_layout.addWidget(repeat_label)
+            
+            repeat_spinbox = QSpinBox()
+            repeat_spinbox.setProperty("class", "iqama_input")
+            repeat_spinbox.setMinimum(1)
+            repeat_spinbox.setMaximum(10)
+            repeat_spinbox.setValue(self.notification_settings.get(prayer, {}).get('repeat_count', 3))
+            repeat_spinbox.setSuffix(" times")
+            row_layout.addWidget(repeat_spinbox)
+            
+            self.notification_inputs[prayer] = {
+                'enabled': enable_checkbox,
+                'repeat_count': repeat_spinbox
+            }
+            
+            card_layout.addWidget(row)
+        
+        layout.addWidget(notifications_card)
+        
+        # Sound settings
+        sound_card = QWidget()
+        sound_card.setProperty("class", "settings_card")
+        
+        sound_layout = QVBoxLayout(sound_card)
+        sound_layout.setContentsMargins(0, 0, 0, 0)
+        sound_layout.setSpacing(12)
+        
+        sound_title = QLabel("Sound Settings")
+        sound_title.setProperty("class", "section_label")
+        sound_layout.addWidget(sound_title)
+        
+        # Sound enabled
+        self.sound_enabled = QCheckBox("Enable notification sounds")
+        self.sound_enabled.setChecked(self.notification_settings.get('sound_enabled', True))
+        sound_layout.addWidget(self.sound_enabled)
+        
+        # Snooze duration
+        snooze_row = QWidget()
+        snooze_layout = QHBoxLayout(snooze_row)
+        snooze_layout.setContentsMargins(0, 0, 0, 0)
+        
+        snooze_label = QLabel("Snooze duration:")
+        snooze_layout.addWidget(snooze_label)
+        
+        self.snooze_duration = QSpinBox()
+        self.snooze_duration.setProperty("class", "iqama_input")
+        self.snooze_duration.setMinimum(1)
+        self.snooze_duration.setMaximum(30)
+        self.snooze_duration.setValue(self.notification_settings.get('snooze_duration', 5))
+        self.snooze_duration.setSuffix(" min")
+        snooze_layout.addWidget(self.snooze_duration)
+        
+        snooze_layout.addStretch()
+        sound_layout.addWidget(snooze_row)
+        
+        layout.addWidget(sound_card)
+        
+        # Reset button
+        reset_btn = QPushButton("🔄 Reset to Defaults")
+        reset_btn.setProperty("class", "cancel_button")
+        reset_btn.clicked.connect(self.reset_notification_settings)
+        reset_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(reset_btn)
+        
+        layout.addStretch()
+        
+        return tab
+    
+    def load_notification_settings(self):
+        """Load saved notification settings"""
+        try:
+            if os.path.exists(self.notifications_config_file):
+                with open(self.notifications_config_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Could not load notification settings: {e}")
+        return {}
+    
+    def save_notification_settings(self):
+        """Save notification settings to config"""
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            notification_data = {
+                'sound_enabled': self.sound_enabled.isChecked(),
+                'snooze_duration': self.snooze_duration.value()
+            }
+            
+            for prayer, inputs in self.notification_inputs.items():
+                notification_data[prayer] = {
+                    'enabled': inputs['enabled'].isChecked(),
+                    'repeat_count': inputs['repeat_count'].value()
+                }
+            
+            with open(self.notifications_config_file, 'w') as f:
+                json.dump(notification_data, f, indent=2)
+        except Exception as e:
+            print(f"Could not save notification settings: {e}")
+    
+    def reset_notification_settings(self):
+        """Reset all notification settings to defaults"""
+        # Reset prayer notifications
+        for prayer, inputs in self.notification_inputs.items():
+            inputs['enabled'].setChecked(True)
+            inputs['repeat_count'].setValue(3)
+        
+        # Reset sound settings
+        self.sound_enabled.setChecked(True)
+        self.snooze_duration.setValue(5)
+    
     def load_iqama_times(self):
         """Load saved Iqama times"""
         try:
@@ -665,6 +842,7 @@ class SettingsDialog(QDialog):
     def accept(self):
         """Save settings when OK is clicked"""
         self.save_iqama_times()
+        self.save_notification_settings()
         super().accept()
     
     def closeEvent(self, event):

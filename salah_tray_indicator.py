@@ -18,9 +18,11 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'tray')
         self.config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'app_config.json')
         self.iqama_config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'iqama_times.json')
+        self.notifications_config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'notifications.json')
         self.tray_config_file = os.path.join(self.config_dir, 'tray_config.json')
         os.makedirs(self.config_dir, exist_ok=True)
         self.ensure_iqama_config_exists()
+        self.ensure_notifications_config_exists()
         self.current_language = self.load_main_config('language', 'en')
         self.current_city = self.load_main_config('city', 'Tangier')
         
@@ -28,6 +30,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.prayer_times = {}
         self.last_notification = None
         self.iqama_notification_sent = False
+        self.notification_counts = {}  # Track notification repeats
+        self.snoozed_prayers = {}  # Track snoozed prayers
         
         # Setup tray
         self.setup_tray()
@@ -281,6 +285,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Reset notification flags when new data is loaded
         self.last_notification = None
         self.iqama_notification_sent = False
+        self.notification_counts = {}
     
     def on_error(self, error):
         self.setToolTip(f"Salah Times - Error: {error}")
@@ -445,6 +450,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
         current_time = now.hour * 60 + now.minute
         
         prayers = [name for name in self.prayer_times.keys() if name != 'Date']
+        notification_settings = self.load_notification_settings()
         
         for prayer in prayers:
             if prayer in self.prayer_times:
@@ -452,11 +458,32 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 iqama_delay = self.get_iqama_delay(prayer)
                 iqama_warning_time = prayer_time + iqama_delay - 2
                 
-                # Prayer time notification
-                if abs(current_time - prayer_time) <= 1 and self.last_notification != prayer:
-                    self.send_prayer_notification(prayer)
+                # Check if notifications are enabled for this prayer
+                prayer_config = notification_settings.get(prayer, {'enabled': True, 'repeat_count': 3})
+                if not prayer_config.get('enabled', True):
+                    continue
+                
+                # Prayer time notification with repeats
+                if abs(current_time - prayer_time) <= 1:
+                    if prayer not in self.notification_counts:
+                        self.notification_counts[prayer] = 0
+                    
+                    max_repeats = prayer_config.get('repeat_count', 3)
+                    if self.notification_counts[prayer] < max_repeats:
+                        self.send_prayer_alarm(prayer)
+                        self.notification_counts[prayer] += 1
+                        
+                        # Schedule next repeat in 2 minutes if not last
+                        if self.notification_counts[prayer] < max_repeats:
+                            QTimer.singleShot(120000, lambda p=prayer: self.repeat_notification(p))
+                    
                     self.last_notification = prayer
                     self.iqama_notification_sent = False
+                
+                # Reset notification count for next day
+                elif abs(current_time - prayer_time) > 60:
+                    if prayer in self.notification_counts:
+                        del self.notification_counts[prayer]
                 
                 # Iqama 2-minute warning
                 if (abs(current_time - iqama_warning_time) <= 1 and 
@@ -465,13 +492,57 @@ class SalahTrayIndicator(QSystemTrayIcon):
                     self.send_iqama_warning(prayer)
                     self.iqama_notification_sent = True
     
+    def repeat_notification(self, prayer):
+        """Repeat notification for prayer"""
+        if prayer in self.notification_counts:
+            notification_settings = self.load_notification_settings()
+            prayer_config = notification_settings.get(prayer, {'enabled': True, 'repeat_count': 3})
+            max_repeats = prayer_config.get('repeat_count', 3)
+            
+            if self.notification_counts[prayer] < max_repeats:
+                self.send_prayer_alarm(prayer)
+                self.notification_counts[prayer] += 1
+    
+    def send_prayer_alarm(self, prayer):
+        """Send alarm-style notification for prayer"""
+        try:
+            # Import and show alarm dialog
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            alarm_script = os.path.join(script_dir, 'prayer_alarm.py')
+            
+            if os.path.exists(alarm_script):
+                prayer_name = self.tr_prayer(prayer)
+                prayer_time = self.prayer_times[prayer]
+                
+                # Launch alarm in separate process
+                subprocess.Popen([
+                    sys.executable, alarm_script,
+                    '--prayer', prayer_name,
+                    '--time', prayer_time,
+                    '--language', self.current_language
+                ])
+            else:
+                # Fallback to regular notification
+                self.send_prayer_notification(prayer)
+        except Exception as e:
+            print(f"Could not show prayer alarm: {e}")
+            self.send_prayer_notification(prayer)
+    
     def send_prayer_notification(self, prayer):
+        """Send regular tray notification (fallback)"""
         prayer_name = self.tr_prayer(prayer)
         iqama_time = self.get_iqama_time(prayer)
         iqama_delay = self.get_iqama_delay(prayer)
         
+        repeat_info = ""
+        if prayer in self.notification_counts:
+            notification_settings = self.load_notification_settings()
+            max_repeats = notification_settings.get(prayer, {}).get('repeat_count', 3)
+            current_count = self.notification_counts[prayer]
+            repeat_info = f" ({current_count}/{max_repeats})"
+        
         self.showMessage(
-            f"🕌 {prayer_name} Prayer Time",
+            f"🕌 {prayer_name} Prayer Time{repeat_info}",
             f"It's time for {prayer_name} prayer\nIqama at {iqama_time} (in {iqama_delay} minutes)",
             QSystemTrayIcon.Information,
             8000
@@ -492,6 +563,11 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.play_system_sound()
     
     def play_system_sound(self):
+        """Play system sound if enabled"""
+        notification_settings = self.load_notification_settings()
+        if not notification_settings.get('sound_enabled', True):
+            return
+            
         try:
             subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'], 
                          check=False, timeout=3)
@@ -682,6 +758,35 @@ class SalahTrayIndicator(QSystemTrayIcon):
         except Exception as e:
             print(f"Could not load Iqama times: {e}")
             return {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+    
+    def ensure_notifications_config_exists(self):
+        """Create notifications config with defaults if it doesn't exist"""
+        if not os.path.exists(self.notifications_config_file):
+            try:
+                config_dir = os.path.dirname(self.notifications_config_file)
+                os.makedirs(config_dir, exist_ok=True)
+                default_notifications = {
+                    'sound_enabled': True,
+                    'snooze_duration': 5,
+                    'Fajr': {'enabled': True, 'repeat_count': 3},
+                    'Dohr': {'enabled': True, 'repeat_count': 3},
+                    'Asr': {'enabled': True, 'repeat_count': 3},
+                    'Maghreb': {'enabled': True, 'repeat_count': 3},
+                    'Isha': {'enabled': True, 'repeat_count': 3}
+                }
+                with open(self.notifications_config_file, 'w') as f:
+                    json.dump(default_notifications, f, indent=2)
+            except Exception as e:
+                print(f"Could not create default notifications config: {e}")
+    
+    def load_notification_settings(self):
+        """Load notification settings from config"""
+        try:
+            with open(self.notifications_config_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Could not load notification settings: {e}")
+            return {'sound_enabled': True, 'snooze_duration': 5}
     
     def get_iqama_delay(self, prayer):
         """Get Iqama delay from config"""
