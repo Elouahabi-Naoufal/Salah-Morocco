@@ -418,6 +418,22 @@ class SettingsDialog(QDialog):
                 font-weight: 500;
                 min-width: 80px;
             }
+            
+            .modern_button {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 14px 28px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            
+            .modern_button:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #5a8c69, stop:1 #3d6a37);
+            }
         """
     
     def create_settings_header(self):
@@ -725,14 +741,48 @@ class SettingsDialog(QDialog):
         snooze_layout.addStretch()
         sound_layout.addWidget(snooze_row)
         
+        # Notification interval
+        interval_row = QWidget()
+        interval_layout = QHBoxLayout(interval_row)
+        interval_layout.setContentsMargins(0, 0, 0, 0)
+        
+        interval_label = QLabel("Repeat interval:")
+        interval_layout.addWidget(interval_label)
+        
+        self.notification_interval = QSpinBox()
+        self.notification_interval.setProperty("class", "iqama_input")
+        self.notification_interval.setMinimum(1)
+        self.notification_interval.setMaximum(10)
+        self.notification_interval.setValue(self.notification_settings.get('notification_interval', 2))
+        self.notification_interval.setSuffix(" min")
+        interval_layout.addWidget(self.notification_interval)
+        
+        interval_layout.addStretch()
+        sound_layout.addWidget(interval_row)
+        
         layout.addWidget(sound_card)
+        
+        # Test and Reset buttons
+        button_row = QWidget()
+        button_layout = QHBoxLayout(button_row)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(15)
+        
+        # Test notification button
+        test_btn = QPushButton("🔔 Test Notification")
+        test_btn.setProperty("class", "modern_button")
+        test_btn.clicked.connect(self.test_notification)
+        test_btn.setCursor(Qt.PointingHandCursor)
+        button_layout.addWidget(test_btn)
         
         # Reset button
         reset_btn = QPushButton("🔄 Reset to Defaults")
         reset_btn.setProperty("class", "cancel_button")
         reset_btn.clicked.connect(self.reset_notification_settings)
         reset_btn.setCursor(Qt.PointingHandCursor)
-        layout.addWidget(reset_btn)
+        button_layout.addWidget(reset_btn)
+        
+        layout.addWidget(button_row)
         
         layout.addStretch()
         
@@ -743,9 +793,12 @@ class SettingsDialog(QDialog):
         try:
             if os.path.exists(self.notifications_config_file):
                 with open(self.notifications_config_file, 'r') as f:
-                    return json.load(f)
+                    settings = json.load(f)
+                print(f"Loaded notification settings: {settings}")
+                return settings
         except Exception as e:
             print(f"Could not load notification settings: {e}")
+        print("Using default notification settings")
         return {}
     
     def save_notification_settings(self):
@@ -754,7 +807,8 @@ class SettingsDialog(QDialog):
             os.makedirs(self.config_dir, exist_ok=True)
             notification_data = {
                 'sound_enabled': self.sound_enabled.isChecked(),
-                'snooze_duration': self.snooze_duration.value()
+                'snooze_duration': self.snooze_duration.value(),
+                'notification_interval': self.notification_interval.value()
             }
             
             for prayer, inputs in self.notification_inputs.items():
@@ -765,6 +819,9 @@ class SettingsDialog(QDialog):
             
             with open(self.notifications_config_file, 'w') as f:
                 json.dump(notification_data, f, indent=2)
+            
+            print(f"Notification settings saved to: {self.notifications_config_file}")
+            print(f"Settings: {notification_data}")
         except Exception as e:
             print(f"Could not save notification settings: {e}")
     
@@ -778,6 +835,41 @@ class SettingsDialog(QDialog):
         # Reset sound settings
         self.sound_enabled.setChecked(True)
         self.snooze_duration.setValue(5)
+        self.notification_interval.setValue(2)
+    
+    def test_notification(self):
+        """Test the notification system"""
+        try:
+            import subprocess
+            from datetime import datetime
+            current_time = datetime.now().strftime("%H:%M")
+            
+            # Send test system notification with actions
+            subprocess.run([
+                'notify-send',
+                '🔔 Test Prayer Time',
+                f'This is a test notification\nTime: {current_time}\nSound: {"Enabled" if self.sound_enabled.isChecked() else "Disabled"}',
+                '--urgency=critical',
+                '--expire-time=0',  # Don't auto-expire for testing
+                '--icon=appointment-soon',
+                '--action=snooze=😴 Snooze',
+                '--action=stop=⏹️ Stop'
+            ], check=False, timeout=5)
+            
+            # Test sound if enabled
+            if self.sound_enabled.isChecked():
+                try:
+                    subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga'], 
+                                 check=False, timeout=3)
+                except:
+                    try:
+                        subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'], 
+                                     check=False, timeout=3)
+                    except:
+                        print('\a')  # Fallback beep
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Test Failed", f"Could not test notification: {e}")
     
     def load_iqama_times(self):
         """Load saved Iqama times"""
@@ -1442,7 +1534,9 @@ class ModernSalahApp(QMainWindow):
         self.config_file = os.path.join(self.config_dir, 'app_config.json')
         self.geometry_file = os.path.join(self.config_dir, 'main_geometry.json')
         self.iqama_config_file = os.path.join(self.config_dir, 'iqama_times.json')
+        self.notifications_config_file = os.path.join(self.config_dir, 'notifications.json')
         self.ensure_iqama_config_exists()
+        self.ensure_notifications_config_exists()
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
         self.tray_process = None
@@ -2235,6 +2329,26 @@ class ModernSalahApp(QMainWindow):
         except Exception as e:
             print(f"Could not load Iqama times: {e}")
             return {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+    
+    def ensure_notifications_config_exists(self):
+        """Create notifications config with defaults if it doesn't exist"""
+        if not os.path.exists(self.notifications_config_file):
+            try:
+                os.makedirs(self.config_dir, exist_ok=True)
+                default_notifications = {
+                    'sound_enabled': True,
+                    'snooze_duration': 5,
+                    'notification_interval': 2,
+                    'Fajr': {'enabled': True, 'repeat_count': 3},
+                    'Dohr': {'enabled': True, 'repeat_count': 3},
+                    'Asr': {'enabled': True, 'repeat_count': 3},
+                    'Maghreb': {'enabled': True, 'repeat_count': 3},
+                    'Isha': {'enabled': True, 'repeat_count': 3}
+                }
+                with open(self.notifications_config_file, 'w') as f:
+                    json.dump(default_notifications, f, indent=2)
+            except Exception as e:
+                print(f"Could not create default notifications config: {e}")
     
     def get_iqama_delay(self, prayer):
         """Get Iqama delay from config"""

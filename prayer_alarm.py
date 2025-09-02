@@ -51,7 +51,8 @@ class PrayerAlarmDialog(QDialog):
         layout.setContentsMargins(30, 30, 30, 30)
         
         # Prayer icon
-        icon_label = QLabel(self.get_prayer_icon())\n        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label = QLabel(self.get_prayer_icon())
+        icon_label.setAlignment(Qt.AlignCenter)
         icon_label.setStyleSheet("font-size: 64px;")
         layout.addWidget(icon_label)
         

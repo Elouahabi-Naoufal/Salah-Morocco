@@ -473,9 +473,11 @@ class SalahTrayIndicator(QSystemTrayIcon):
                         self.send_prayer_alarm(prayer)
                         self.notification_counts[prayer] += 1
                         
-                        # Schedule next repeat in 2 minutes if not last
+                        # Schedule next repeat based on interval setting
                         if self.notification_counts[prayer] < max_repeats:
-                            QTimer.singleShot(120000, lambda p=prayer: self.repeat_notification(p))
+                            interval_minutes = notification_settings.get('notification_interval', 2)
+                            interval_ms = interval_minutes * 60 * 1000
+                            QTimer.singleShot(interval_ms, lambda p=prayer: self.repeat_notification(p))
                     
                     self.last_notification = prayer
                     self.iqama_notification_sent = False
@@ -504,28 +506,39 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 self.notification_counts[prayer] += 1
     
     def send_prayer_alarm(self, prayer):
-        """Send alarm-style notification for prayer"""
+        """Send system notification with snooze/stop actions"""
         try:
-            # Import and show alarm dialog
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            alarm_script = os.path.join(script_dir, 'prayer_alarm.py')
+            prayer_name = self.tr_prayer(prayer)
+            prayer_time = self.prayer_times[prayer]
+            iqama_time = self.get_iqama_time(prayer)
+            iqama_delay = self.get_iqama_delay(prayer)
             
-            if os.path.exists(alarm_script):
-                prayer_name = self.tr_prayer(prayer)
-                prayer_time = self.prayer_times[prayer]
-                
-                # Launch alarm in separate process
-                subprocess.Popen([
-                    sys.executable, alarm_script,
-                    '--prayer', prayer_name,
-                    '--time', prayer_time,
-                    '--language', self.current_language
-                ])
-            else:
-                # Fallback to regular notification
-                self.send_prayer_notification(prayer)
+            # Get repeat info
+            repeat_info = ""
+            if prayer in self.notification_counts:
+                notification_settings = self.load_notification_settings()
+                max_repeats = notification_settings.get(prayer, {}).get('repeat_count', 3)
+                current_count = self.notification_counts[prayer]
+                repeat_info = f" ({current_count}/{max_repeats})"
+            
+            # Send system notification with actions
+            subprocess.run([
+                'notify-send',
+                f'🕌 {prayer_name} Prayer Time{repeat_info}',
+                f'It\'s time for {prayer_name} prayer\nIqama at {iqama_time} (in {iqama_delay} minutes)',
+                '--urgency=critical',
+                '--expire-time=0',  # Don't auto-expire
+                '--icon=appointment-soon',
+                '--action=snooze=😴 Snooze',
+                '--action=stop=⏹️ Stop'
+            ], check=False, timeout=5)
+            
+            # Play sound if enabled
+            self.play_system_sound()
+            
         except Exception as e:
-            print(f"Could not show prayer alarm: {e}")
+            print(f"Could not send system notification: {e}")
+            # Fallback to tray notification
             self.send_prayer_notification(prayer)
     
     def send_prayer_notification(self, prayer):
@@ -569,13 +582,16 @@ class SalahTrayIndicator(QSystemTrayIcon):
             return
             
         try:
-            subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'], 
+            # Try alarm sound first
+            subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga'], 
                          check=False, timeout=3)
         except:
             try:
-                subprocess.run(['notify-send', '--urgency=normal', 'Prayer Time'], 
-                             check=False, timeout=2)
+                # Fallback to message sound
+                subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/message-new-instant.oga'], 
+                             check=False, timeout=3)
             except:
+                # Final fallback: system beep
                 print('\a')
     
     def on_prayer_clicked(self, prayer):
@@ -768,6 +784,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 default_notifications = {
                     'sound_enabled': True,
                     'snooze_duration': 5,
+                    'notification_interval': 2,
                     'Fajr': {'enabled': True, 'repeat_count': 3},
                     'Dohr': {'enabled': True, 'repeat_count': 3},
                     'Asr': {'enabled': True, 'repeat_count': 3},
@@ -786,7 +803,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 return json.load(f)
         except Exception as e:
             print(f"Could not load notification settings: {e}")
-            return {'sound_enabled': True, 'snooze_duration': 5}
+            return {'sound_enabled': True, 'snooze_duration': 5, 'notification_interval': 2}
     
     def get_iqama_delay(self, prayer):
         """Get Iqama delay from config"""
