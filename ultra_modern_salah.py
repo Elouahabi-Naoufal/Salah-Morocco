@@ -674,6 +674,9 @@ class SettingsDialog(QDialog):
         
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)
+    
+    def tr_prayer(self, prayer_key):
+        return TRANSLATIONS[self.current_language]['prayers'].get(prayer_key, prayer_key)
         
     def filter_cities(self, text):
         self.city_list.clear()
@@ -1954,12 +1957,6 @@ class ModernSalahApp(QMainWindow):
     def tr_prayer(self, prayer_key):
         return TRANSLATIONS[self.current_language]['prayers'].get(prayer_key, prayer_key)
     
-    def get_iqama_times(self):
-        """Get current Iqama times from inputs"""
-        if hasattr(self, 'iqama_inputs'):
-            return {prayer: input_widget.value() for prayer, input_widget in self.iqama_inputs.items()}
-        return self.iqama_times
-    
     def tr_city(self, city_key):
         return CITIES[city_key][self.current_language]
     
@@ -2097,7 +2094,7 @@ class ModernSalahApp(QMainWindow):
             remaining = iqama_end_time - current_time
             
             if remaining <= 0:
-                    self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(current_prayer)))
+                self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(current_prayer)))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
             else:
                 hours = remaining // 60
@@ -2109,7 +2106,7 @@ class ModernSalahApp(QMainWindow):
                 elif seconds > 0 and minutes > 0:
                     minutes -= 1
                 
-                    self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(current_prayer), hours, minutes, seconds))
+                self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(current_prayer), hours, minutes, seconds))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
         else:
             self.iqama_countdown.setText("")
