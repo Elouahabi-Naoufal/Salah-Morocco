@@ -700,49 +700,70 @@ class OfflineSunriseCalculator:
     @staticmethod
     def calculate_sunrise(city_name, date):
         """Calculate sunrise time offline using astronomical formulas"""
-        if city_name not in CITIES or 'lat' not in CITIES[city_name]:
-            return None
-        
-        lat = CITIES[city_name]['lat']
-        lon = CITIES[city_name]['lon']
-        
-        # Get day of year
-        day_of_year = date.timetuple().tm_yday
-        
-        # Calculate solar declination (δ)
-        declination = 23.44 * math.sin(math.radians(360 * (284 + day_of_year) / 365))
-        
-        # Convert latitude to radians
-        lat_rad = math.radians(lat)
-        decl_rad = math.radians(declination)
-        
-        # Calculate hour angle (ω) for sunrise
         try:
+            if city_name not in CITIES or 'lat' not in CITIES[city_name]:
+                print(f"Debug: City {city_name} not found or no coordinates")
+                return None
+            
+            lat = CITIES[city_name]['lat']
+            lon = CITIES[city_name]['lon']
+            print(f"Debug: Calculating for {city_name} at {lat}, {lon}")
+            
+            # Get day of year
+            day_of_year = date.timetuple().tm_yday
+            print(f"Debug: Day of year: {day_of_year}")
+            
+            # Calculate solar declination (δ)
+            declination = 23.44 * math.sin(math.radians(360 * (284 + day_of_year) / 365))
+            print(f"Debug: Declination: {declination}")
+            
+            # Convert latitude to radians
+            lat_rad = math.radians(lat)
+            decl_rad = math.radians(declination)
+            
+            # Calculate hour angle (ω) for sunrise
             cos_hour_angle = -math.tan(lat_rad) * math.tan(decl_rad)
-            # Clamp to valid range [-1, 1]
-            cos_hour_angle = max(-1, min(1, cos_hour_angle))
+            print(f"Debug: cos_hour_angle: {cos_hour_angle}")
+            
+            # Check if sun rises (polar regions might not have sunrise/sunset)
+            if cos_hour_angle < -1 or cos_hour_angle > 1:
+                print(f"Debug: No sunrise/sunset for this location and date")
+                return None
+                
             hour_angle = math.degrees(math.acos(cos_hour_angle))
-        except:
+            print(f"Debug: Hour angle: {hour_angle}")
+            
+            # Morocco timezone offset (UTC+1, no DST)
+            timezone_offset = 1
+            
+            # Compute solar noon
+            solar_noon = 12 - (lon / 15 - timezone_offset)
+            print(f"Debug: Solar noon: {solar_noon}")
+            
+            # Compute sunrise time
+            sunrise_time = solar_noon - (hour_angle / 15)
+            print(f"Debug: Sunrise time (decimal): {sunrise_time}")
+            
+            # Convert to hours and minutes
+            hours = int(sunrise_time)
+            minutes = int((sunrise_time - hours) * 60)
+            
+            # Handle negative hours (previous day)
+            if hours < 0:
+                hours += 24
+            
+            # Ensure valid time format
+            hours = hours % 24
+            minutes = max(0, min(59, minutes))
+            
+            result = f"{hours:02d}:{minutes:02d}"
+            result = f"{hours:02d}:{minutes:02d}"
+            print(f"Debug: Final sunrise time: {result}")
+            return result
+            
+        except Exception as e:
+            print(f"Debug: Error in calculation: {e}")
             return None
-        
-        # Morocco timezone offset (UTC+1, no DST)
-        timezone_offset = 1
-        
-        # Compute solar noon
-        solar_noon = 12 - (lon / 15 - timezone_offset)
-        
-        # Compute sunrise time
-        sunrise_time = solar_noon - (hour_angle / 15)
-        
-        # Convert to hours and minutes
-        hours = int(sunrise_time)
-        minutes = int((sunrise_time - hours) * 60)
-        
-        # Ensure valid time format
-        hours = max(0, min(23, hours))
-        minutes = max(0, min(59, minutes))
-        
-        return f"{hours:02d}:{minutes:02d}"
     
     @staticmethod
     def calculate_all_prayer_times(city_name, date):
@@ -1354,9 +1375,9 @@ class ModernSalahApp(QMainWindow):
         # Store prayer cards for updates
         self.prayer_cards = {}
         
-        # Create placeholder cards
-        prayers = ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']
-        icons = {'Fajr': '🌙', 'Sunrise': '🌅', 'Dohr': '☀️', 
+        # Create placeholder cards (use Chorok instead of Sunrise)
+        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        icons = {'Fajr': '🌙', 'Chorok': '🌅', 'Dohr': '☀️', 
                 'Asr': '🌇', 'Maghreb': '🌆', 'Isha': '🌃'}
         
         for i, prayer in enumerate(prayers):
@@ -1631,13 +1652,19 @@ class ModernSalahApp(QMainWindow):
     def _display_prayer_times_common(self, prayer_times):
         current_prayer = self.get_current_prayer()
         
-        # Map Sunrise to Chorok for display
+        # Calculate Chorok locally using solar formula
+        today = datetime.now()
+        calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, today)
+        
+        # Create display times: ignore scraped Sunrise, use calculated Chorok
         display_times = {}
         for prayer, time in prayer_times.items():
-            if prayer == 'Sunrise':
-                display_times['Chorok'] = time
-            else:
+            if prayer != 'Sunrise':  # Skip scraped Sunrise completely
                 display_times[prayer] = time
+        
+        # Add calculated Chorok
+        if calculated_chorok:
+            display_times['Chorok'] = calculated_chorok
         
         # Update prayer cards with new times and styling
         for prayer, time in display_times.items():
