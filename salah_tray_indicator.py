@@ -15,9 +15,12 @@ class SalahTrayIndicator(QSystemTrayIcon):
         super().__init__(parent)
         
         # Load config
-        self.config_file = os.path.expanduser('~/.salah_config.json')
-        self.current_language = self.load_config('language', 'en')
-        self.current_city = self.load_config('city', 'Tangier')
+        self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'tray')
+        self.config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'app_config.json')
+        self.tray_config_file = os.path.join(self.config_dir, 'tray_config.json')
+        os.makedirs(self.config_dir, exist_ok=True)
+        self.current_language = self.load_main_config('language', 'en')
+        self.current_city = self.load_main_config('city', 'Tangier')
         
         # Prayer data
         self.prayer_times = {}
@@ -30,7 +33,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.setup_config_watcher()
         self.load_prayer_times()
         
-    def load_config(self, key, default):
+    def load_main_config(self, key, default):
+        """Load from main app config"""
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
@@ -38,6 +42,32 @@ class SalahTrayIndicator(QSystemTrayIcon):
                     return config.get(key, default)
             except:
                 pass
+        return default
+    
+    def save_tray_config(self, key, value):
+        """Save tray-specific configuration"""
+        try:
+            config = {}
+            if os.path.exists(self.tray_config_file):
+                with open(self.tray_config_file, 'r') as f:
+                    config = json.load(f)
+            
+            config[key] = value
+            
+            with open(self.tray_config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"Could not save tray config: {e}")
+    
+    def load_tray_config(self, key, default):
+        """Load tray-specific configuration"""
+        try:
+            if os.path.exists(self.tray_config_file):
+                with open(self.tray_config_file, 'r') as f:
+                    config = json.load(f)
+                    return config.get(key, default)
+        except Exception as e:
+            print(f"Could not load tray config: {e}")
         return default
     
     def setup_tray(self):
@@ -205,8 +235,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
         current_mtime = self.get_config_mtime()
         if current_mtime != self.last_config_mtime:
             self.last_config_mtime = current_mtime
-            new_language = self.load_config('language', 'en')
-            new_city = self.load_config('city', 'Tangier')
+            new_language = self.load_main_config('language', 'en')
+            new_city = self.load_main_config('city', 'Tangier')
             
             if new_language != self.current_language or new_city != self.current_city:
                 self.current_language = new_language

@@ -170,7 +170,10 @@ class SettingsDialog(QDialog):
         self.current_city = current_city
         self.current_language = current_language
         self.cities = sorted(CITIES.keys())
+        self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
+        self.geometry_file = os.path.join(self.config_dir, 'settings_geometry.json')
         self.init_ui()
+        self.restore_geometry()
         
     def init_ui(self):
         self.setWindowTitle(self.tr('settings'))
@@ -432,6 +435,38 @@ class SettingsDialog(QDialog):
         layout.addWidget(ok_btn)
         
         return section
+    
+    def restore_geometry(self):
+        """Restore window geometry from saved settings"""
+        try:
+            if os.path.exists(self.geometry_file):
+                with open(self.geometry_file, 'r') as f:
+                    geometry = json.load(f)
+                self.resize(geometry.get('width', 450), geometry.get('height', 550))
+                if 'x' in geometry and 'y' in geometry:
+                    self.move(geometry['x'], geometry['y'])
+        except Exception as e:
+            print(f"Could not restore settings geometry: {e}")
+    
+    def save_geometry(self):
+        """Save current window geometry"""
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            geometry = {
+                'width': self.width(),
+                'height': self.height(),
+                'x': self.x(),
+                'y': self.y()
+            }
+            with open(self.geometry_file, 'w') as f:
+                json.dump(geometry, f)
+        except Exception as e:
+            print(f"Could not save settings geometry: {e}")
+    
+    def closeEvent(self, event):
+        """Save geometry when dialog closes"""
+        self.save_geometry()
+        super().closeEvent(event)
         
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)
@@ -790,7 +825,7 @@ class PrayerTimeWorker(QThread):
         super().__init__()
         self.city_id = city_id
         self.city_name = city_name
-        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times')
+        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
         self.storage_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
     
     def run(self):
@@ -815,7 +850,8 @@ class PrayerTimeWorker(QThread):
     def should_update_data(self):
         """Check if data needs updating based on last scrape time"""
         try:
-            update_file = os.path.join(self.data_folder, 'last_update.json')
+            config_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
+            update_file = os.path.join(config_folder, 'last_update.json')
             if not os.path.exists(update_file):
                 return True
             
@@ -887,8 +923,9 @@ class PrayerTimeWorker(QThread):
     def save_update_timestamp(self):
         """Save when we last updated the data"""
         try:
-            os.makedirs(self.data_folder, exist_ok=True)
-            update_file = os.path.join(self.data_folder, 'last_update.json')
+            config_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
+            os.makedirs(config_folder, exist_ok=True)
+            update_file = os.path.join(config_folder, 'last_update.json')
             
             update_info = {
                 'last_update': datetime.now().isoformat(),
@@ -940,7 +977,7 @@ class PrayerTimeWorker(QThread):
                                 prayer_data[header] = col.text.strip()
                             all_prayer_times[date] = prayer_data
                     
-                    # Save city data
+                    # Save city data to cities subfolder
                     city_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
                     city_data_obj = {
                         'city': city_name,
@@ -1016,7 +1053,9 @@ class ModernSalahApp(QMainWindow):
         self.current_prayer = None
         self.is_offline = False
         self.days_remaining = 0
-        self.config_file = os.path.expanduser('~/.salah_config.json')
+        self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
+        self.config_file = os.path.join(self.config_dir, 'app_config.json')
+        self.geometry_file = os.path.join(self.config_dir, 'main_geometry.json')
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
         self.tray_process = None
@@ -1026,11 +1065,13 @@ class ModernSalahApp(QMainWindow):
         self.timer.start(1000)  # Update every second
         
         self.init_ui()
+        self.restore_geometry()
         self.update_all_ui_text()
         self.load_prayer_times()
         self.start_tray_indicator()
         
     def load_language_config(self):
+        os.makedirs(self.config_dir, exist_ok=True)
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
@@ -1041,6 +1082,7 @@ class ModernSalahApp(QMainWindow):
         return 'en'
     
     def load_city_config(self):
+        os.makedirs(self.config_dir, exist_ok=True)
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
@@ -1061,6 +1103,7 @@ class ModernSalahApp(QMainWindow):
     def save_config(self, city, language):
         config = {'city': city, 'language': language}
         try:
+            os.makedirs(self.config_dir, exist_ok=True)
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
         except:
@@ -1088,13 +1131,11 @@ class ModernSalahApp(QMainWindow):
         self.resize(480, 720)
         self.setStyleSheet(self.get_modern_stylesheet())
         
-        # Center window
+        # Default center position (will be overridden by restore_geometry if saved)
         screen = QDesktopWidget().screenGeometry()
         size = self.geometry()
-        self.move(
-            (screen.width() - size.width()) // 2,
-            (screen.height() - size.height()) // 2
-        )
+        self.default_x = (screen.width() - size.width()) // 2
+        self.default_y = (screen.height() - size.height()) // 2
         
         # Main widget with gradient background
         main_widget = QWidget()
@@ -1903,8 +1944,41 @@ class ModernSalahApp(QMainWindow):
         except Exception as e:
             print(f"Could not start tray indicator: {e}")
     
+    def restore_geometry(self):
+        """Restore window geometry from saved settings"""
+        try:
+            if os.path.exists(self.geometry_file):
+                with open(self.geometry_file, 'r') as f:
+                    geometry = json.load(f)
+                self.resize(geometry.get('width', 480), geometry.get('height', 720))
+                if 'x' in geometry and 'y' in geometry:
+                    self.move(geometry['x'], geometry['y'])
+                else:
+                    self.move(self.default_x, self.default_y)
+            else:
+                self.move(self.default_x, self.default_y)
+        except Exception as e:
+            print(f"Could not restore main geometry: {e}")
+            self.move(self.default_x, self.default_y)
+    
+    def save_geometry(self):
+        """Save current window geometry"""
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            geometry = {
+                'width': self.width(),
+                'height': self.height(),
+                'x': self.x(),
+                'y': self.y()
+            }
+            with open(self.geometry_file, 'w') as f:
+                json.dump(geometry, f)
+        except Exception as e:
+            print(f"Could not save main geometry: {e}")
+    
     def closeEvent(self, event):
-        """Handle window close - don't close tray indicator"""
+        """Handle window close - save geometry and don't close tray indicator"""
+        self.save_geometry()
         event.accept()  # Allow window to close, tray stays running
 
 def main():
