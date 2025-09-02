@@ -170,64 +170,234 @@ class SettingsDialog(QDialog):
         
     def init_ui(self):
         self.setWindowTitle(self.tr('settings'))
-        self.setFixedSize(400, 450)
+        self.setMinimumSize(450, 500)
+        self.resize(450, 550)
         self.setModal(True)
-        self.setStyleSheet('background-color: black; color: white;')
+        self.setStyleSheet(self.get_modern_settings_stylesheet())
         
-        layout = QVBoxLayout(self)
-        layout.setSpacing(20)
+        # Main container with gradient background
+        main_container = QWidget()
+        main_container.setObjectName("settings_main")
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(main_container)
+        
+        layout = QVBoxLayout(main_container)
+        layout.setSpacing(25)
         layout.setContentsMargins(30, 30, 30, 30)
         
+        # Header section
+        header = self.create_settings_header()
+        layout.addWidget(header, 0)
+        
+        # Language section
+        lang_section = self.create_language_section()
+        layout.addWidget(lang_section, 0)
+        
+        # City section
+        city_section = self.create_city_section()
+        layout.addWidget(city_section, 1)
+        
+        # Button section
+        button_section = self.create_button_section()
+        layout.addWidget(button_section, 0)
+    
+    def get_modern_settings_stylesheet(self):
+        return """
+            #settings_main {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #f8fffe, stop:1 #e8f5e8);
+            }
+            
+            .settings_card {
+                background: white;
+                border-radius: 15px;
+                border: 1px solid rgba(45, 90, 39, 0.1);
+                padding: 20px;
+            }
+            
+            .settings_title {
+                color: #2d5a27;
+                font-size: 28px;
+                font-weight: 600;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            
+            .settings_subtitle {
+                color: #666666;
+                font-size: 14px;
+                font-weight: 400;
+            }
+            
+            .section_label {
+                color: #2d5a27;
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 10px;
+            }
+            
+            .modern_combo {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                padding: 12px 15px;
+                font-size: 14px;
+                color: #333;
+                min-height: 20px;
+            }
+            
+            .modern_combo:focus {
+                border-color: #2d5a27;
+                outline: none;
+            }
+            
+            .modern_combo::drop-down {
+                border: none;
+                width: 30px;
+            }
+            
+            .modern_combo::down-arrow {
+                image: none;
+                border: 2px solid #666;
+                border-top: none;
+                border-right: none;
+                width: 8px;
+                height: 8px;
+                transform: rotate(-45deg);
+                margin-right: 10px;
+            }
+            
+            .modern_search {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                padding: 12px 15px;
+                font-size: 14px;
+                color: #333;
+            }
+            
+            .modern_search:focus {
+                border-color: #2d5a27;
+                outline: none;
+            }
+            
+            .modern_list {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                font-size: 14px;
+                color: #333;
+                outline: none;
+            }
+            
+            .modern_list::item {
+                padding: 12px 15px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            
+            .modern_list::item:selected {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                color: white;
+            }
+            
+            .modern_list::item:hover {
+                background: rgba(45, 90, 39, 0.1);
+            }
+            
+            .modern_button {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 14px 28px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            
+            .modern_button:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #5a8c69, stop:1 #3d6a37);
+            }
+            
+            .cancel_button {
+                background: #f5f5f5;
+                color: #666;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                padding: 14px 28px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            
+            .cancel_button:hover {
+                background: #e8e8e8;
+                border-color: #ccc;
+            }
+        """
+    
+    def create_settings_header(self):
+        header = QWidget()
+        layout = QVBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        
         title = QLabel(self.tr('settings'))
+        title.setProperty("class", "settings_title")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet('font-size: 20px; font-weight: bold; color: white;')
         layout.addWidget(title)
         
-        # Language selection
-        lang_label = QLabel(self.tr('language') + ':')
-        lang_label.setStyleSheet('font-size: 14px; color: #ccc;')
-        layout.addWidget(lang_label)
+        subtitle = QLabel("Customize your prayer times experience")
+        subtitle.setProperty("class", "settings_subtitle")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+        
+        return header
+    
+    def create_language_section(self):
+        section = QWidget()
+        section.setProperty("class", "settings_card")
+        
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        
+        label = QLabel(self.tr('language'))
+        label.setProperty("class", "section_label")
+        layout.addWidget(label)
         
         self.language_combo = QComboBox()
+        self.language_combo.setProperty("class", "modern_combo")
         self.language_combo.addItems(['English', 'العربية', 'Français'])
         lang_map = {'en': 0, 'ar': 1, 'fr': 2}
         self.language_combo.setCurrentIndex(lang_map.get(self.current_language, 0))
-        self.language_combo.setStyleSheet('''
-            QComboBox {
-                padding: 10px;
-                font-size: 14px;
-                border: 2px solid #444;
-                border-radius: 8px;
-                background-color: #333;
-                color: white;
-            }
-        ''')
         layout.addWidget(self.language_combo)
         
-        # City selection
-        city_label = QLabel(self.tr('select_city'))
-        city_label.setStyleSheet('font-size: 14px; color: #ccc;')
-        layout.addWidget(city_label)
+        return section
+    
+    def create_city_section(self):
+        section = QWidget()
+        section.setProperty("class", "settings_card")
+        
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        
+        label = QLabel(self.tr('select_city'))
+        label.setProperty("class", "section_label")
+        label.setWordWrap(True)
+        layout.addWidget(label)
         
         self.search_box = QLineEdit()
+        self.search_box.setProperty("class", "modern_search")
         self.search_box.setPlaceholderText(self.tr('search_city'))
         self.search_box.textChanged.connect(self.filter_cities)
-        self.search_box.setStyleSheet('''
-            QLineEdit {
-                padding: 10px;
-                font-size: 14px;
-                border: 2px solid #444;
-                border-radius: 8px;
-                background-color: #333;
-                color: white;
-            }
-            QLineEdit:focus {
-                border-color: #2d5a27;
-            }
-        ''')
         layout.addWidget(self.search_box)
         
         self.city_list = QListWidget()
+        self.city_list.setProperty("class", "modern_list")
         translated_cities = self.get_translated_cities()
         self.city_list.addItems(translated_cities)
         current_translated = CITIES[self.current_city][self.current_language]
@@ -235,42 +405,29 @@ class SettingsDialog(QDialog):
             self.city_list.setCurrentRow(translated_cities.index(current_translated))
         except ValueError:
             self.city_list.setCurrentRow(0)
-        self.city_list.setFixedHeight(120)
-        self.city_list.setStyleSheet('''
-            QListWidget {
-                background-color: #333;
-                border: 2px solid #444;
-                border-radius: 8px;
-                color: white;
-                font-size: 14px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #444;
-            }
-            QListWidget::item:selected {
-                background-color: #2d5a27;
-                color: white;
-            }
-            QListWidget::item:hover {
-                background-color: #555;
-            }
-        ''')
-        layout.addWidget(self.city_list)
+        layout.addWidget(self.city_list, 1)
         
-        button_layout = QHBoxLayout()
+        return section
+    
+    def create_button_section(self):
+        section = QWidget()
+        layout = QHBoxLayout(section)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(15)
         
         cancel_btn = QPushButton(self.tr('cancel'))
+        cancel_btn.setProperty("class", "cancel_button")
         cancel_btn.clicked.connect(self.reject)
-        cancel_btn.setStyleSheet('padding: 10px 20px; background: #666; color: white; border: none; border-radius: 6px;')
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(cancel_btn)
         
         ok_btn = QPushButton(self.tr('set_default'))
+        ok_btn.setProperty("class", "modern_button")
         ok_btn.clicked.connect(self.accept)
-        ok_btn.setStyleSheet('padding: 10px 20px; background: #2d5a27; color: white; border: none; border-radius: 6px; font-weight: bold;')
+        ok_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(ok_btn)
         
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        layout.addLayout(button_layout)
+        return section
         
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)
@@ -312,46 +469,171 @@ class CitySelectionDialog(QDialog):
         self.init_ui()
         
     def init_ui(self):
-        self.setWindowTitle('Select Your Default City')
-        self.setFixedSize(400, 350)
+        self.setWindowTitle('Welcome to Salah Times')
+        self.setMinimumSize(450, 450)
+        self.resize(450, 500)
         self.setModal(True)
-        self.setStyleSheet('background-color: black; color: white;')
+        self.setStyleSheet(self.get_welcome_stylesheet())
         
-        layout = QVBoxLayout(self)
-        layout.setSpacing(20)
+        # Main container
+        main_container = QWidget()
+        main_container.setObjectName("welcome_main")
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(main_container)
+        
+        layout = QVBoxLayout(main_container)
+        layout.setSpacing(25)
         layout.setContentsMargins(30, 30, 30, 30)
         
+        # Welcome header
+        header = self.create_welcome_header()
+        layout.addWidget(header, 0)
+        
+        # City selection card
+        city_card = self.create_city_selection_card()
+        layout.addWidget(city_card, 1)
+        
+        # Buttons
+        buttons = self.create_welcome_buttons()
+        layout.addWidget(buttons, 0)
+    
+    def get_welcome_stylesheet(self):
+        return """
+            #welcome_main {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #f8fffe, stop:1 #e8f5e8);
+            }
+            
+            .welcome_card {
+                background: white;
+                border-radius: 15px;
+                border: 1px solid rgba(45, 90, 39, 0.1);
+                padding: 25px;
+            }
+            
+            .welcome_title {
+                color: #2d5a27;
+                font-size: 32px;
+                font-weight: 600;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            
+            .welcome_subtitle {
+                color: #666666;
+                font-size: 16px;
+                font-weight: 400;
+                line-height: 1.4;
+            }
+            
+            .welcome_search {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                padding: 15px;
+                font-size: 14px;
+                color: #333;
+            }
+            
+            .welcome_search:focus {
+                border-color: #2d5a27;
+                outline: none;
+            }
+            
+            .welcome_list {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                font-size: 14px;
+                color: #333;
+                outline: none;
+            }
+            
+            .welcome_list::item {
+                padding: 15px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            
+            .welcome_list::item:selected {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                color: white;
+            }
+            
+            .welcome_list::item:hover {
+                background: rgba(45, 90, 39, 0.1);
+            }
+            
+            .welcome_button {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 16px 32px;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            
+            .welcome_button:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #5a8c69, stop:1 #3d6a37);
+            }
+            
+            .welcome_cancel {
+                background: #f5f5f5;
+                color: #666;
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                padding: 16px 32px;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            
+            .welcome_cancel:hover {
+                background: #e8e8e8;
+                border-color: #ccc;
+            }
+        """
+    
+    def create_welcome_header(self):
+        header = QWidget()
+        layout = QVBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        
         title = QLabel(self.tr('welcome'))
+        title.setProperty("class", "welcome_title")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet('font-size: 20px; font-weight: bold; color: white;')
+        title.setWordWrap(True)
         layout.addWidget(title)
         
         subtitle = QLabel(self.tr('select_city'))
+        subtitle.setProperty("class", "welcome_subtitle")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet('font-size: 14px; color: #ccc;')
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+        
+        return header
+    
+    def create_city_selection_card(self):
+        card = QWidget()
+        card.setProperty("class", "welcome_card")
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(15)
         
         # Search box
         self.search_box = QLineEdit()
+        self.search_box.setProperty("class", "welcome_search")
         self.search_box.setPlaceholderText(self.tr('search_city'))
         self.search_box.textChanged.connect(self.filter_cities)
-        self.search_box.setStyleSheet('''
-            QLineEdit {
-                padding: 10px;
-                font-size: 14px;
-                border: 2px solid #444;
-                border-radius: 8px;
-                background-color: #333;
-                color: white;
-            }
-            QLineEdit:focus {
-                border-color: #2d5a27;
-            }
-        ''')
         layout.addWidget(self.search_box)
         
         # City list
         self.city_list = QListWidget()
+        self.city_list.setProperty("class", "welcome_list")
         translated_cities = self.get_translated_cities()
         self.city_list.addItems(translated_cities)
         tangier_translated = CITIES['Tangier'][self.language]
@@ -359,56 +641,29 @@ class CitySelectionDialog(QDialog):
             self.city_list.setCurrentRow(translated_cities.index(tangier_translated))
         except ValueError:
             self.city_list.setCurrentRow(0)
-        self.city_list.setFixedHeight(150)
-        self.city_list.setStyleSheet('''
-            QListWidget {
-                background-color: #333;
-                border: 2px solid #444;
-                border-radius: 8px;
-                color: white;
-                font-size: 14px;
-                max-height: 150px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #444;
-            }
-            QListWidget::item:selected {
-                background-color: #2d5a27;
-                color: white;
-            }
-            QListWidget::item:hover {
-                background-color: #555;
-            }
-            QScrollBar:vertical {
-                background-color: #444;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #666;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #888;
-            }
-        ''')
-        layout.addWidget(self.city_list)
+        layout.addWidget(self.city_list, 1)
         
-        button_layout = QHBoxLayout()
+        return card
+    
+    def create_welcome_buttons(self):
+        section = QWidget()
+        layout = QHBoxLayout(section)
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(15)
         
         cancel_btn = QPushButton(self.tr('cancel'))
+        cancel_btn.setProperty("class", "welcome_cancel")
         cancel_btn.clicked.connect(self.reject)
-        cancel_btn.setStyleSheet('padding: 10px 20px; background: #666; color: white; border: none; border-radius: 6px;')
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(cancel_btn)
         
         ok_btn = QPushButton(self.tr('set_default'))
+        ok_btn.setProperty("class", "welcome_button")
         ok_btn.clicked.connect(self.accept)
-        ok_btn.setStyleSheet('padding: 10px 20px; background: #2d5a27; color: white; border: none; border-radius: 6px; font-weight: bold;')
+        ok_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(ok_btn)
         
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        layout.addLayout(button_layout)
+        return section
         
     def filter_cities(self, text):
         self.city_list.clear()
