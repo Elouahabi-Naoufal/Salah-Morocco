@@ -172,13 +172,15 @@ class SettingsDialog(QDialog):
         self.cities = sorted(CITIES.keys())
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
         self.geometry_file = os.path.join(self.config_dir, 'settings_geometry.json')
+        self.iqama_config_file = os.path.join(self.config_dir, 'iqama_times.json')
+        self.iqama_times = self.load_iqama_times()
         self.init_ui()
         self.restore_geometry()
         
     def init_ui(self):
         self.setWindowTitle(self.tr('settings'))
-        self.setMinimumSize(450, 500)
-        self.resize(450, 550)
+        self.setMinimumSize(500, 600)
+        self.resize(500, 650)
         self.setModal(True)
         self.setStyleSheet(self.get_modern_settings_stylesheet())
         
@@ -190,20 +192,26 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(main_container)
         
         layout = QVBoxLayout(main_container)
-        layout.setSpacing(25)
-        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        layout.setContentsMargins(25, 25, 25, 25)
         
         # Header section
         header = self.create_settings_header()
         layout.addWidget(header, 0)
         
-        # Language section
-        lang_section = self.create_language_section()
-        layout.addWidget(lang_section, 0)
+        # Tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setProperty("class", "settings_tabs")
         
-        # City section
-        city_section = self.create_city_section()
-        layout.addWidget(city_section, 1)
+        # General tab
+        general_tab = self.create_general_tab()
+        self.tab_widget.addTab(general_tab, "⚙️ General")
+        
+        # Iqama tab
+        iqama_tab = self.create_iqama_tab()
+        self.tab_widget.addTab(iqama_tab, "⏰ Iqama Times")
+        
+        layout.addWidget(self.tab_widget, 1)
         
         # Button section
         button_section = self.create_button_section()
@@ -342,6 +350,68 @@ class SettingsDialog(QDialog):
                 background: #e8e8e8;
                 border-color: #ccc;
             }
+            
+            .settings_tabs {
+                background: transparent;
+                border: none;
+            }
+            
+            .settings_tabs::pane {
+                border: 2px solid #e0e0e0;
+                border-radius: 12px;
+                background: white;
+                padding: 15px;
+            }
+            
+            .settings_tabs::tab-bar {
+                alignment: center;
+            }
+            
+            .settings_tabs QTabBar::tab {
+                background: #f5f5f5;
+                border: 2px solid #e0e0e0;
+                border-bottom: none;
+                border-radius: 8px 8px 0 0;
+                padding: 12px 20px;
+                margin-right: 2px;
+                font-size: 14px;
+                font-weight: 500;
+                color: #666;
+            }
+            
+            .settings_tabs QTabBar::tab:selected {
+                background: white;
+                border-color: #2d5a27;
+                color: #2d5a27;
+                font-weight: 600;
+            }
+            
+            .settings_tabs QTabBar::tab:hover {
+                background: #f0f8f0;
+                color: #2d5a27;
+            }
+            
+            .iqama_input {
+                background: white;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 14px;
+                color: #333;
+                max-width: 80px;
+            }
+            
+            .iqama_input:focus {
+                border-color: #2d5a27;
+                outline: none;
+            }
+            
+            .iqama_label {
+                color: #2d5a27;
+                font-size: 14px;
+                font-weight: 500;
+                min-width: 80px;
+            }
         """
     
     def create_settings_header(self):
@@ -436,6 +506,135 @@ class SettingsDialog(QDialog):
         
         return section
     
+    def create_general_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Language section
+        lang_section = self.create_language_section()
+        layout.addWidget(lang_section)
+        
+        # City section
+        city_section = self.create_city_section()
+        layout.addWidget(city_section, 1)
+        
+        return tab
+    
+    def create_iqama_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Iqama times card
+        iqama_card = QWidget()
+        iqama_card.setProperty("class", "settings_card")
+        
+        card_layout = QVBoxLayout(iqama_card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(15)
+        
+        # Title
+        title = QLabel("Configure Iqama Delay Times")
+        title.setProperty("class", "section_label")
+        title.setWordWrap(True)
+        card_layout.addWidget(title)
+        
+        # Description
+        desc = QLabel("Set the delay time (in minutes) between Adhan and Iqama for each prayer:")
+        desc.setStyleSheet("color: #666; font-size: 12px;")
+        desc.setWordWrap(True)
+        card_layout.addWidget(desc)
+        
+        # Iqama inputs
+        self.iqama_inputs = {}
+        prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        icons = {'Fajr': '🌌', 'Dohr': '🔆', 'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
+        
+        for prayer in prayers:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(15)
+            
+            # Prayer icon and name
+            prayer_info = QWidget()
+            info_layout = QHBoxLayout(prayer_info)
+            info_layout.setContentsMargins(0, 0, 0, 0)
+            info_layout.setSpacing(8)
+            
+            icon_label = QLabel(icons[prayer])
+            icon_label.setStyleSheet("font-size: 18px;")
+            info_layout.addWidget(icon_label)
+            
+            name_label = QLabel(self.tr_prayer(prayer))
+            name_label.setProperty("class", "iqama_label")
+            info_layout.addWidget(name_label)
+            info_layout.addStretch()
+            
+            row_layout.addWidget(prayer_info, 1)
+            
+            # Input and label
+            input_widget = QSpinBox()
+            input_widget.setProperty("class", "iqama_input")
+            input_widget.setMinimum(0)
+            input_widget.setMaximum(60)
+            input_widget.setSuffix(" min")
+            input_widget.setValue(self.iqama_times.get(prayer, self.get_default_iqama(prayer)))
+            self.iqama_inputs[prayer] = input_widget
+            
+            row_layout.addWidget(input_widget)
+            
+            card_layout.addWidget(row)
+        
+        layout.addWidget(iqama_card)
+        
+        # Reset button
+        reset_btn = QPushButton("🔄 Reset to Defaults")
+        reset_btn.setProperty("class", "cancel_button")
+        reset_btn.clicked.connect(self.reset_iqama_times)
+        reset_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(reset_btn)
+        
+        layout.addStretch()
+        
+        return tab
+    
+    def load_iqama_times(self):
+        """Load saved Iqama times"""
+        try:
+            if os.path.exists(self.iqama_config_file):
+                with open(self.iqama_config_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Could not load Iqama times: {e}")
+        return {}
+    
+    def save_iqama_times(self):
+        """Save Iqama times to config"""
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            iqama_data = {}
+            for prayer, input_widget in self.iqama_inputs.items():
+                iqama_data[prayer] = input_widget.value()
+            
+            with open(self.iqama_config_file, 'w') as f:
+                json.dump(iqama_data, f, indent=2)
+        except Exception as e:
+            print(f"Could not save Iqama times: {e}")
+    
+    def get_default_iqama(self, prayer):
+        """Get default Iqama delay for prayer"""
+        defaults = {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+        return defaults.get(prayer, 15)
+    
+    def reset_iqama_times(self):
+        """Reset all Iqama times to defaults"""
+        for prayer, input_widget in self.iqama_inputs.items():
+            input_widget.setValue(self.get_default_iqama(prayer))
+    
     def restore_geometry(self):
         """Restore window geometry from saved settings"""
         try:
@@ -462,6 +661,11 @@ class SettingsDialog(QDialog):
                 json.dump(geometry, f)
         except Exception as e:
             print(f"Could not save settings geometry: {e}")
+    
+    def accept(self):
+        """Save settings when OK is clicked"""
+        self.save_iqama_times()
+        super().accept()
     
     def closeEvent(self, event):
         """Save geometry when dialog closes"""
@@ -1056,6 +1260,8 @@ class ModernSalahApp(QMainWindow):
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
         self.config_file = os.path.join(self.config_dir, 'app_config.json')
         self.geometry_file = os.path.join(self.config_dir, 'main_geometry.json')
+        self.iqama_config_file = os.path.join(self.config_dir, 'iqama_times.json')
+        self.ensure_iqama_config_exists()
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
         self.tray_process = None
@@ -1117,11 +1323,12 @@ class ModernSalahApp(QMainWindow):
             new_language = dialog.get_selected_language()
             
             if new_city != self.current_city or new_language != self.current_language:
+                old_city = self.current_city
                 self.current_city = new_city
                 self.current_language = new_language
                 self.save_config(new_city, new_language)
                 self.update_ui_language()
-                if new_city != self.current_city:
+                if new_city != old_city:
                     self.prayer_times = {}
                     self.load_prayer_times()
         
@@ -1747,6 +1954,12 @@ class ModernSalahApp(QMainWindow):
     def tr_prayer(self, prayer_key):
         return TRANSLATIONS[self.current_language]['prayers'].get(prayer_key, prayer_key)
     
+    def get_iqama_times(self):
+        """Get current Iqama times from inputs"""
+        if hasattr(self, 'iqama_inputs'):
+            return {prayer: input_widget.value() for prayer, input_widget in self.iqama_inputs.items()}
+        return self.iqama_times
+    
     def tr_city(self, city_key):
         return CITIES[city_key][self.current_language]
     
@@ -1828,9 +2041,30 @@ class ModernSalahApp(QMainWindow):
             self.next_name.setText(f"{self.tr_prayer(first_prayer)} ({self.tr('tomorrow')})")
             self.next_time.setText(self.prayer_times[first_prayer])
             
+    def ensure_iqama_config_exists(self):
+        """Create Iqama config with defaults if it doesn't exist"""
+        if not os.path.exists(self.iqama_config_file):
+            try:
+                os.makedirs(self.config_dir, exist_ok=True)
+                default_iqama = {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+                with open(self.iqama_config_file, 'w') as f:
+                    json.dump(default_iqama, f, indent=2)
+            except Exception as e:
+                print(f"Could not create default Iqama config: {e}")
+    
+    def load_iqama_times(self):
+        """Load Iqama times from config"""
+        try:
+            with open(self.iqama_config_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Could not load Iqama times: {e}")
+            return {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+    
     def get_iqama_delay(self, prayer):
-        delays = {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
-        return delays.get(prayer, 0)
+        """Get Iqama delay from config"""
+        iqama_times = self.load_iqama_times()
+        return iqama_times.get(prayer, 15)
     
     def is_iqama_time(self, prayer):
         if not prayer or prayer not in self.prayer_times:
@@ -1863,7 +2097,7 @@ class ModernSalahApp(QMainWindow):
             remaining = iqama_end_time - current_time
             
             if remaining <= 0:
-                self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(current_prayer)))
+                    self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(current_prayer)))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
             else:
                 hours = remaining // 60
@@ -1875,7 +2109,7 @@ class ModernSalahApp(QMainWindow):
                 elif seconds > 0 and minutes > 0:
                     minutes -= 1
                 
-                self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(current_prayer), hours, minutes, seconds))
+                    self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(current_prayer), hours, minutes, seconds))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
         else:
             self.iqama_countdown.setText("")

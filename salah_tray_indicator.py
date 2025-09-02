@@ -17,8 +17,10 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Load config
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'tray')
         self.config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'app_config.json')
+        self.iqama_config_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'iqama_times.json')
         self.tray_config_file = os.path.join(self.config_dir, 'tray_config.json')
         os.makedirs(self.config_dir, exist_ok=True)
+        self.ensure_iqama_config_exists()
         self.current_language = self.load_main_config('language', 'en')
         self.current_city = self.load_main_config('city', 'Tangier')
         
@@ -660,9 +662,31 @@ class SalahTrayIndicator(QSystemTrayIcon):
         
         return prayer_time <= current_time < prayer_time + iqama_delay
     
+    def ensure_iqama_config_exists(self):
+        """Create Iqama config with defaults if it doesn't exist"""
+        if not os.path.exists(self.iqama_config_file):
+            try:
+                config_dir = os.path.dirname(self.iqama_config_file)
+                os.makedirs(config_dir, exist_ok=True)
+                default_iqama = {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+                with open(self.iqama_config_file, 'w') as f:
+                    json.dump(default_iqama, f, indent=2)
+            except Exception as e:
+                print(f"Could not create default Iqama config: {e}")
+    
+    def load_iqama_times(self):
+        """Load Iqama times from config"""
+        try:
+            with open(self.iqama_config_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Could not load Iqama times: {e}")
+            return {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
+    
     def get_iqama_delay(self, prayer):
-        delays = {'Fajr': 20, 'Dohr': 15, 'Asr': 15, 'Maghreb': 10, 'Isha': 15}
-        return delays.get(prayer, 0)
+        """Get Iqama delay from config"""
+        iqama_times = self.load_iqama_times()
+        return iqama_times.get(prayer, 15)
     
     def get_iqama_time(self, prayer):
         if not prayer or prayer not in self.prayer_times:
