@@ -450,26 +450,85 @@ class PrayerTimeWorker(QThread):
         self.storage_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
     
     def run(self):
-        # Check internet connection first
+        # Always load cached data first (fast)
+        self.load_cached_data_immediately()
+        
+        # Check if we need to update in background
+        if self.should_update_data():
+            self.update_data_in_background()
+    
+    def load_cached_data_immediately(self):
+        """Load cached data instantly without waiting"""
+        today = datetime.now().strftime('%d/%m')
+        offline_data = self.load_offline_data()
+        
+        if offline_data and today in offline_data['prayer_times']:
+            self.data_received.emit(offline_data['prayer_times'][today])
+        else:
+            # No cached data, force update
+            self.force_update_data()
+    
+    def should_update_data(self):
+        """Check if data needs updating based on last scrape time"""
+        try:
+            update_file = os.path.join(self.data_folder, 'last_update.json')
+            if not os.path.exists(update_file):
+                return True
+            
+            with open(update_file, 'r') as f:
+                update_info = json.load(f)
+            
+            last_update = datetime.fromisoformat(update_info['last_update'])
+            now = datetime.now()
+            
+            # Update if more than 1 day old
+            return (now - last_update).days >= 1
+        except:
+            return True
+    
+    def update_data_in_background(self):
+        """Update data in background without blocking UI"""
         if self.check_internet_connection():
             try:
-                # Online mode: Update all cities data
                 self.update_all_cities_data()
+                self.save_update_timestamp()
+            except Exception as e:
+                print(f"Background update failed: {e}")
+    
+    def force_update_data(self):
+        """Force update when no cached data exists"""
+        if self.check_internet_connection():
+            try:
+                self.update_all_cities_data()
+                self.save_update_timestamp()
                 
-                # Load today's data for current city
+                # Load today's data
                 today = datetime.now().strftime('%d/%m')
                 offline_data = self.load_offline_data()
                 if offline_data and today in offline_data['prayer_times']:
                     self.data_received.emit(offline_data['prayer_times'][today])
                 else:
                     self.error_occurred.emit("No prayer times found for today")
-                    
             except Exception as e:
-                # Fallback to offline mode
-                self.load_offline_mode(str(e))
+                self.error_occurred.emit(str(e))
         else:
-            # No internet: try offline mode
-            self.load_offline_mode("No internet connection")
+            self.error_occurred.emit("No internet connection and no cached data")
+    
+    def save_update_timestamp(self):
+        """Save when we last updated the data"""
+        try:
+            os.makedirs(self.data_folder, exist_ok=True)
+            update_file = os.path.join(self.data_folder, 'last_update.json')
+            
+            update_info = {
+                'last_update': datetime.now().isoformat(),
+                'cities_updated': len(CITIES)
+            }
+            
+            with open(update_file, 'w') as f:
+                json.dump(update_info, f, indent=2)
+        except Exception as e:
+            print(f"Could not save update timestamp: {e}")
     
     def check_internet_connection(self):
         try:
@@ -649,9 +708,10 @@ class ModernSalahApp(QMainWindow):
                     self.load_prayer_times()
         
     def init_ui(self):
-        self.setWindowTitle('🕌 Salah Times - Tangier')
-        self.setFixedSize(400, 700)
-        self.setStyleSheet(self.get_stylesheet())
+        self.setWindowTitle('Salah Times')
+        self.setMinimumSize(400, 600)
+        self.resize(480, 720)
+        self.setStyleSheet(self.get_modern_stylesheet())
         
         # Center window
         screen = QDesktopWidget().screenGeometry()
@@ -661,325 +721,394 @@ class ModernSalahApp(QMainWindow):
             (screen.height() - size.height()) // 2
         )
         
-        # Main widget
+        # Main widget with gradient background
         main_widget = QWidget()
+        main_widget.setObjectName("main_container")
         self.setCentralWidget(main_widget)
         
         # Main layout
         layout = QVBoxLayout(main_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
         
-        # Header
-        header = self.create_header()
-        layout.addWidget(header)
+        # Top bar with title and settings (fixed size)
+        top_bar = self.create_top_bar()
+        layout.addWidget(top_bar, 0)  # No stretch
         
-        # Content area
-        content = QWidget()
-        content.setObjectName("content")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(20, 20, 20, 20)
-        content_layout.setSpacing(20)
+        # Current time and location card
+        time_location_card = self.create_time_location_card()
+        layout.addWidget(time_location_card, 1)  # Equal stretch
         
-        # Date section
-        date_card = self.create_date_card()
-        content_layout.addWidget(date_card)
+        # Prayer times grid
+        prayer_grid = self.create_prayer_grid()
+        layout.addWidget(prayer_grid, 2)  # Double stretch (main content)
         
-        # Prayer times section
-        self.prayer_card = self.create_prayer_card()
-        content_layout.addWidget(self.prayer_card)
+        # Next prayer highlight
+        next_prayer_highlight = self.create_next_prayer_highlight()
+        layout.addWidget(next_prayer_highlight, 1)  # Equal stretch
         
-        # Next prayer section
-        self.next_prayer_card = self.create_next_prayer_card()
-        content_layout.addWidget(self.next_prayer_card)
+        # Bottom controls (fixed size)
+        bottom_controls = self.create_bottom_controls()
+        layout.addWidget(bottom_controls, 0)  # No stretch
         
-        # Refresh button
-        refresh_btn = self.create_refresh_button()
-        content_layout.addWidget(refresh_btn)
-        
-        layout.addWidget(content)
-        
-    def get_stylesheet(self):
+    def get_modern_stylesheet(self):
         return """
             QMainWindow {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #f8fffe, stop:1 #e8f5e8);
             }
             
-            #header {
+            #main_container {
+                background: transparent;
+            }
+            
+            .glass_card {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #2d5a27, stop:1 #4a7c59);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 20px;
+            }
+            
+            .prayer_card {
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 15px;
                 border: none;
+                margin: 5px;
             }
             
-            #header QLabel {
-                color: white;
-                border: none;
-            }
-            
-            #mosque_icon {
-                font-size: 32px;
-                font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial;
-            }
-            
-            #title {
-                font-size: 24px;
-                font-weight: bold;
-                font-family: 'Inter', sans-serif;
-            }
-            
-            #location {
-                font-size: 14px;
-                color: rgba(255, 255, 255, 0.9);
-                font-family: 'Inter', sans-serif;
-            }
-            
-            #content {
-                background: transparent;
-            }
-            
-            .card {
-                background: white;
-                border-radius: 16px;
-                border: none;
-                padding: 30px;
-                height: 350px;
-            }
-            
-            .date_card {
-                background: white;
-                border-radius: 16px;
-                border: none;
-                padding: 12px;
-                min-height: 60px;
-            }
-            
-            .date_card QLabel {
-                color: #2d5a27;
-                border: none;
-                background: transparent;
-            }
-            
-            #hijri_date {
-                font-size: 18px;
-                font-weight: bold;
-                color: #2d5a27;
-                font-family: 'Inter', sans-serif;
-            }
-            
-            #current_date {
-                font-size: 14px;
-                color: #666666;
-                font-family: 'Inter', sans-serif;
-            }
-            
-            .prayer_item {
-                background: transparent;
-                border: none;
-                padding: 16px 0px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            
-            .prayer_item:last-child {
-                border-bottom: none;
-            }
-            
-            .prayer_item.current {
+            .prayer_card_current {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(74, 124, 89, 0.1), stop:1 rgba(74, 124, 89, 0.05));
-                border-radius: 12px;
-                padding: 16px;
-                margin: 0px -16px;
-                border-bottom: 1px solid rgba(74, 124, 89, 0.2);
+                    stop:0 #4CAF50, stop:1 #45a049);
+                border-radius: 15px;
+                border: none;
+                margin: 5px;
             }
             
-            .prayer_name {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2d5a27;
-                font-family: 'Inter', sans-serif;
+            .prayer_card QLabel {
+                color: #2c3e50;
+                font-family: 'Segoe UI', Arial, sans-serif;
                 background: transparent;
                 border: none;
             }
             
-            .prayer_time {
-                font-size: 16px;
-                font-weight: bold;
-                color: #333333;
-                font-family: 'Inter', sans-serif;
+            .prayer_card_current QLabel {
+                color: white;
+                font-family: 'Segoe UI', Arial, sans-serif;
                 background: transparent;
                 border: none;
             }
             
             .prayer_icon {
-                font-size: 24px;
+                font-size: 28px;
                 font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial;
-                background: transparent;
-                border: none;
-                min-width: 30px;
             }
             
-            .next_prayer_card {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #4a7c59, stop:1 #2d5a27);
-                border-radius: 16px;
-                border: none;
-                padding: 20px;
-            }
-            
-            .next_prayer_card QLabel {
-                color: white;
-                background: transparent;
-                border: none;
-                font-family: 'Inter', sans-serif;
-            }
-            
-            #next_label {
-                font-size: 12px;
-                color: rgba(255, 255, 255, 0.8);
-                font-weight: bold;
-            }
-            
-            #next_name {
-                font-size: 20px;
-                font-weight: bold;
-            }
-            
-            #next_time {
+            .prayer_name {
                 font-size: 16px;
-                color: rgba(255, 255, 255, 0.9);
+                font-weight: 600;
             }
             
-            #countdown {
-                font-size: 24px;
-                font-weight: bold;
-            }
-            
-            #iqama_countdown {
+            .prayer_time {
                 font-size: 18px;
                 font-weight: bold;
-                color: #ff4444;
             }
             
-            #refresh_btn {
+            .title_text {
+                color: #2d5a27;
+                font-size: 28px;
+                font-weight: 600;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            
+            .subtitle_text {
+                color: #666666;
+                font-size: 14px;
+                font-weight: 400;
+            }
+            
+            .time_text {
+                color: white;
+                font-size: 48px;
+                font-weight: 100;
+                font-family: 'Segoe UI Light', Arial, sans-serif;
+            }
+            
+            .date_text {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 16px;
+                font-weight: 400;
+            }
+            
+            .next_prayer_highlight {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #4a7c59, stop:1 #2d5a27);
-                color: white;
+                border-radius: 20px;
                 border: none;
-                border-radius: 12px;
-                padding: 14px 20px;
-                font-size: 16px;
-                font-weight: bold;
-                font-family: 'Inter', sans-serif;
             }
             
-            #refresh_btn:hover {
+            .next_prayer_text {
+                color: white;
+                font-size: 14px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .next_prayer_name {
+                color: white;
+                font-size: 24px;
+                font-weight: 600;
+            }
+            
+            .countdown_text {
+                color: white;
+                font-size: 36px;
+                font-weight: 100;
+                font-family: 'Segoe UI Light', Arial, sans-serif;
+            }
+            
+            .modern_button {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4a7c59, stop:1 #2d5a27);
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 14px;
+                font-weight: 500;
+                padding: 12px 24px;
+            }
+            
+            .modern_button:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #5a8c69, stop:1 #3d6a37);
             }
             
-            #refresh_btn:pressed {
+            .modern_button:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #1d4a17, stop:1 #2d5a27);
             }
             
-            #settings_btn {
-                background: transparent;
-                border: none;
-                font-size: 16px;
-                color: rgba(255, 255, 255, 0.8);
-            }
-            
-            #settings_btn:hover {
+            .settings_button {
+                background: rgba(45, 90, 39, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 20px;
                 color: white;
-                background: rgba(255, 255, 255, 0.1);
-                border-radius: 15px;
+                font-size: 18px;
+                padding: 10px;
             }
             
-            .loading {
-                color: #666666;
+            .settings_button:hover {
+                background: rgba(45, 90, 39, 1.0);
+            }
+            
+            .iqama_text {
+                color: #FFD700;
                 font-size: 14px;
-                font-family: 'Inter', sans-serif;
-                background: transparent;
-                border: none;
-            }
-            
-            .error {
-                color: #d32f2f;
-                font-size: 12px;
-                font-family: 'Inter', sans-serif;
-                background: transparent;
-                border: none;
+                font-weight: 500;
             }
         """
         
-    def create_header(self):
-        header = QWidget()
-        header.setObjectName("header")
-        header.setFixedHeight(150)
+    def create_top_bar(self):
+        top_bar = QWidget()
+        layout = QHBoxLayout(top_bar)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        layout = QVBoxLayout(header)
-        layout.setContentsMargins(20, 25, 20, 25)
-        layout.setSpacing(12)
-        layout.setAlignment(Qt.AlignCenter)
-        
-        mosque_icon = QLabel("🕌")
-        mosque_icon.setObjectName("mosque_icon")
-        mosque_icon.setAlignment(Qt.AlignCenter)
-        layout.addWidget(mosque_icon)
+        # Title section
+        title_section = QWidget()
+        title_layout = QVBoxLayout(title_section)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(5)
         
         self.title_label = QLabel()
-        self.title_label.setObjectName("title")
-        self.title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.title_label)
+        self.title_label.setProperty("class", "title_text")
+        title_layout.addWidget(self.title_label)
         
         self.location_label = QLabel()
-        self.location_label.setObjectName("location")
-        self.location_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.location_label)
+        self.location_label.setProperty("class", "subtitle_text")
+        title_layout.addWidget(self.location_label)
         
-        # Offline indicator and settings in horizontal layout
-        controls_layout = QHBoxLayout()
-        controls_layout.setContentsMargins(0, 5, 0, 0)
-        
+        # Offline indicator
         self.offline_indicator = QLabel("")
-        self.offline_indicator.setObjectName("offline_indicator")
-        self.offline_indicator.setAlignment(Qt.AlignLeft)
-        self.offline_indicator.setStyleSheet("color: #ff6b35; font-size: 12px; font-weight: bold;")
-        controls_layout.addWidget(self.offline_indicator)
+        self.offline_indicator.setStyleSheet("color: #FFD700; font-size: 12px; font-weight: 500;")
+        title_layout.addWidget(self.offline_indicator)
         
-        controls_layout.addStretch()  # Push settings button to the right
+        layout.addWidget(title_section)
+        layout.addStretch()
         
+        # Settings button
         settings_btn = QPushButton("⚙️")
-        settings_btn.setObjectName("settings_btn")
+        settings_btn.setProperty("class", "settings_button")
         settings_btn.clicked.connect(self.show_settings)
-        settings_btn.setFixedSize(35, 35)
+        settings_btn.setMinimumSize(35, 35)
+        settings_btn.setMaximumSize(50, 50)
         settings_btn.setCursor(Qt.PointingHandCursor)
-        settings_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 17px;
-                font-size: 16px;
-                color: white;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }
-            QPushButton:pressed {
-                background: rgba(255, 255, 255, 0.3);
-            }
-        """)
-        controls_layout.addWidget(settings_btn)
+        layout.addWidget(settings_btn)
         
-        controls_widget = QWidget()
-        controls_widget.setLayout(controls_layout)
-        layout.addWidget(controls_widget)
+        return top_bar
+    
+    def create_time_location_card(self):
+        card = QWidget()
+        card.setProperty("class", "glass_card")
         
-        return header
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(8)
         
-    def create_date_card(self):
+        # Current time
+        current_time = datetime.now().strftime("%H:%M")
+        time_label = QLabel(current_time)
+        time_label.setProperty("class", "time_text")
+        time_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(time_label, 1)
+        
+        # Date info container
+        date_container = QWidget()
+        date_layout = QVBoxLayout(date_container)
+        date_layout.setContentsMargins(0, 0, 0, 0)
+        date_layout.setSpacing(4)
+        
+        self.current_date = QLabel()
+        self.current_date.setProperty("class", "date_text")
+        self.current_date.setAlignment(Qt.AlignCenter)
+        self.current_date.setWordWrap(True)
+        date_layout.addWidget(self.current_date)
+        
+        self.hijri_date = QLabel()
+        self.hijri_date.setProperty("class", "date_text")
+        self.hijri_date.setAlignment(Qt.AlignCenter)
+        self.hijri_date.setWordWrap(True)
+        date_layout.addWidget(self.hijri_date)
+        
+        layout.addWidget(date_container, 0)
+        
+        return card
+    
+    def create_prayer_grid(self):
+        container = QWidget()
+        
+        # Create grid layout
+        grid = QGridLayout(container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(10)
+        
+        # Make rows and columns stretch equally
+        for i in range(3):  # 3 rows
+            grid.setRowStretch(i, 1)
+        for i in range(2):  # 2 columns
+            grid.setColumnStretch(i, 1)
+        
+        # Store prayer cards for updates
+        self.prayer_cards = {}
+        
+        # Create placeholder cards
+        prayers = ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        icons = {'Fajr': '🌙', 'Sunrise': '🌅', 'Dohr': '☀️', 
+                'Asr': '🌇', 'Maghreb': '🌆', 'Isha': '🌃'}
+        
+        for i, prayer in enumerate(prayers):
+            card = self.create_prayer_card_widget(prayer, icons[prayer], "--:--")
+            row = i // 2
+            col = i % 2
+            grid.addWidget(card, row, col)
+            self.prayer_cards[prayer] = card
+        
+        return container
+    
+    def create_prayer_card_widget(self, prayer_name, icon, time, is_current=False):
+        card = QWidget()
+        card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(5)
+        
+        # Icon and name row
+        top_layout = QHBoxLayout()
+        
+        icon_label = QLabel(icon)
+        icon_label.setProperty("class", "prayer_icon")
+        top_layout.addWidget(icon_label)
+        
+        name_label = QLabel(self.tr_prayer(prayer_name))
+        name_label.setProperty("class", "prayer_name")
+        name_label.setWordWrap(True)
+        top_layout.addWidget(name_label)
+        
+        top_layout.addStretch()
+        layout.addLayout(top_layout)
+        
+        # Time
+        time_label = QLabel(time)
+        time_label.setProperty("class", "prayer_time")
+        time_label.setAlignment(Qt.AlignCenter)
+        time_label.setWordWrap(True)
+        layout.addWidget(time_label)
+        
+        return card
+    
+    def create_next_prayer_highlight(self):
+        card = QWidget()
+        card.setProperty("class", "next_prayer_highlight")
+        card.setMinimumHeight(80)
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(25, 15, 25, 15)
+        layout.setAlignment(Qt.AlignCenter)
+        
+        # Next prayer label
+        self.next_label = QLabel()
+        self.next_label.setProperty("class", "next_prayer_text")
+        self.next_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.next_label)
+        
+        # Prayer name and time
+        info_layout = QHBoxLayout()
+        
+        prayer_info_layout = QVBoxLayout()
+        
+        self.next_name = QLabel("")
+        self.next_name.setProperty("class", "next_prayer_name")
+        self.next_name.setWordWrap(True)
+        prayer_info_layout.addWidget(self.next_name)
+        
+        self.next_time = QLabel("")
+        self.next_time.setProperty("class", "subtitle_text")
+        self.next_time.setWordWrap(True)
+        prayer_info_layout.addWidget(self.next_time)
+        
+        info_layout.addLayout(prayer_info_layout)
+        info_layout.addStretch()
+        
+        self.countdown = QLabel("")
+        self.countdown.setProperty("class", "countdown_text")
+        self.countdown.setWordWrap(True)
+        info_layout.addWidget(self.countdown)
+        
+        layout.addLayout(info_layout)
+        
+        # Iqama countdown
+        self.iqama_countdown = QLabel("")
+        self.iqama_countdown.setProperty("class", "iqama_text")
+        self.iqama_countdown.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.iqama_countdown)
+        
+        return card
+    
+    def create_bottom_controls(self):
+        controls = QWidget()
+        layout = QHBoxLayout(controls)
+        layout.setContentsMargins(0, 10, 0, 0)
+        
+        # Refresh button
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.setProperty("class", "modern_button")
+        self.refresh_btn.clicked.connect(self.load_prayer_times)
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(self.refresh_btn)
+        
+        return controls
+        
+    def create_date_card_old(self):
         card = QWidget()
         card.setObjectName("date_card")
         card.setProperty("class", "date_card")
@@ -1019,7 +1148,7 @@ class ModernSalahApp(QMainWindow):
         
         scroll_widget = QWidget()
         self.prayer_layout = QVBoxLayout(scroll_widget)
-        self.prayer_layout.setContentsMargins(20, 20, 20, 20)
+        self.prayer_layout.setContentsMargins(15, 15, 15, 15)
         self.prayer_layout.setSpacing(0)
         self.prayer_layout.addStretch()
         
@@ -1101,17 +1230,24 @@ class ModernSalahApp(QMainWindow):
             self.hijri_date.setText(self.tr('hijri_approx').format(hijri_year))
     
     def load_prayer_times(self):
-        # Clear current prayer times display
-        self.clear_prayer_layout()
-        loading = QLabel("🔄 Loading prayer times...")
-        loading.setProperty("class", "loading")
-        loading.setAlignment(Qt.AlignCenter)
-        self.prayer_layout.addWidget(loading)
+        # Show loading state in prayer cards
+        for prayer in ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+            if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
+                # Update card to show loading
+                card = self.prayer_cards[prayer]
+                # Find the time label and update it
+                for child in card.findChildren(QLabel):
+                    if child.property("class") == "prayer_time":
+                        child.setText("...")
         
         # Reset offline status
         self.is_offline = False
         self.days_remaining = 0
         self.update_offline_indicator()
+        
+        # Update refresh button text
+        if hasattr(self, 'refresh_btn'):
+            self.refresh_btn.setText("🔄 Loading...")
         
         # Start worker thread
         city_id = CITIES.get(self.current_city, {'id': 101})['id']
@@ -1122,10 +1258,8 @@ class ModernSalahApp(QMainWindow):
         self.worker.start()
         
     def clear_prayer_layout(self):
-        while self.prayer_layout.count():
-            child = self.prayer_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Not needed with new grid system
+        pass
                 
     def display_prayer_times(self, prayer_times):
         self.prayer_times = prayer_times
@@ -1141,38 +1275,27 @@ class ModernSalahApp(QMainWindow):
         self._display_prayer_times_common(prayer_times)
     
     def _display_prayer_times_common(self, prayer_times):
-        self.clear_prayer_layout()
-        
-        icons = {'Date': '📅', 'Fajr': '🌌', 'Sunrise': '🌞', 'Dohr': '🔆', 
-                'Asr': '🌅', 'Maghreb': '🌇', 'Isha': '🌃'}
-        
         current_prayer = self.get_current_prayer()
         
-        for header, time in prayer_times.items():
-            item = QWidget()
-            item.setProperty("class", "prayer_item")
-            if header == current_prayer:
-                item.setProperty("class", "prayer_item current")
-            
-            layout = QHBoxLayout(item)
-            layout.setContentsMargins(0, 0, 0, 0)
-            
-            icon = QLabel(icons.get(header, '🕐'))
-            icon.setStyleSheet("font-size: 24px; font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', Arial; min-width: 30px;")
-            layout.addWidget(icon)
-            
-            translated_name = self.tr_prayer(header)
-            name = QLabel(translated_name)
-            name.setProperty("class", "prayer_name")
-            layout.addWidget(name)
-            
-            layout.addStretch()
-            
-            time_label = QLabel(time)
-            time_label.setProperty("class", "prayer_time")
-            layout.addWidget(time_label)
-            
-            self.prayer_layout.addWidget(item)
+        # Update prayer cards with new times and styling
+        for prayer, time in prayer_times.items():
+            if prayer in self.prayer_cards and prayer != 'Date':
+                card = self.prayer_cards[prayer]
+                is_current = (prayer == current_prayer)
+                
+                # Update card styling
+                card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
+                card.setStyleSheet(self.get_modern_stylesheet())  # Refresh styles
+                
+                # Update time text
+                for child in card.findChildren(QLabel):
+                    if child.property("class") == "prayer_time":
+                        child.setText(time)
+                        child.setStyleSheet("")  # Clear any error styling
+        
+        # Update refresh button
+        if hasattr(self, 'refresh_btn'):
+            self.refresh_btn.setText(self.tr('refresh'))
         
         self.update_next_prayer()
         self.update_countdown()
@@ -1362,12 +1485,14 @@ class ModernSalahApp(QMainWindow):
             self.countdown.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             
     def show_error(self, error_message):
-        self.clear_prayer_layout()
-        error = QLabel(f"⚠️ Error: {error_message}\n\nPlease check your internet connection\nand try refreshing.")
-        error.setProperty("class", "error")
-        error.setAlignment(Qt.AlignCenter)
-        error.setWordWrap(True)
-        self.prayer_layout.addWidget(error)
+        # Show error in prayer cards
+        for prayer in ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+            if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
+                card = self.prayer_cards[prayer]
+                for child in card.findChildren(QLabel):
+                    if child.property("class") == "prayer_time":
+                        child.setText("Error")
+                        child.setStyleSheet("color: #ff4444;")
     
     def start_tray_indicator(self):
         """Start the tray indicator if not already running"""
