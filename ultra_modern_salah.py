@@ -10,6 +10,7 @@ import threading
 import json
 import os
 import subprocess
+import math
 
 # Translation dictionaries
 TRANSLATIONS = {
@@ -39,7 +40,8 @@ TRANSLATIONS = {
         'prayers': {
             'Date': 'Date',
             'Fajr': 'Fajr',
-            'Sunrise': 'Sunrise', 
+            'Sunrise': 'Sunrise',
+            'Chorok': 'Sunrise',
             'Dohr': 'Dhuhr',
             'Asr': 'Asr',
             'Maghreb': 'Maghrib',
@@ -73,6 +75,7 @@ TRANSLATIONS = {
             'Date': 'التاريخ',
             'Fajr': 'الفجر',
             'Sunrise': 'الشروق',
+            'Chorok': 'الشروق',
             'Dohr': 'الظهر',
             'Asr': 'العصر',
             'Maghreb': 'المغرب',
@@ -106,6 +109,7 @@ TRANSLATIONS = {
             'Date': 'Date',
             'Fajr': 'Fajr',
             'Sunrise': 'Lever du soleil',
+            'Chorok': 'Lever du soleil',
             'Dohr': 'Dhuhr',
             'Asr': 'Asr',
             'Maghreb': 'Maghrib',
@@ -115,49 +119,49 @@ TRANSLATIONS = {
 }
 
 CITIES = {
-    'Tangier': {'id': 101, 'en': 'Tangier', 'ar': 'طنجة', 'fr': 'Tanger'},
-    'Casablanca': {'id': 71, 'en': 'Casablanca', 'ar': 'الدار البيضاء', 'fr': 'Casablanca'},
-    'Rabat': {'id': 95, 'en': 'Rabat', 'ar': 'الرباط', 'fr': 'Rabat'},
-    'Marrakech': {'id': 88, 'en': 'Marrakech', 'ar': 'مراكش', 'fr': 'Marrakech'},
-    'Fes': {'id': 78, 'en': 'Fes', 'ar': 'فاس', 'fr': 'Fes'},
-    'Agadir': {'id': 66, 'en': 'Agadir', 'ar': 'أكادير', 'fr': 'Agadir'},
-    'Meknes': {'id': 89, 'en': 'Meknes', 'ar': 'مكناس', 'fr': 'Meknes'},
-    'Oujda': {'id': 93, 'en': 'Oujda', 'ar': 'وجدة', 'fr': 'Oujda'},
-    'Kenitra': {'id': 81, 'en': 'Kenitra', 'ar': 'القنيطرة', 'fr': 'Kenitra'},
-    'Tetouan': {'id': 100, 'en': 'Tetouan', 'ar': 'تطوان', 'fr': 'Tetouan'},
-    'Safi': {'id': 96, 'en': 'Safi', 'ar': 'آسفي', 'fr': 'Safi'},
-    'Mohammedia': {'id': 90, 'en': 'Mohammedia', 'ar': 'المحمدية', 'fr': 'Mohammedia'},
-    'Khouribga': {'id': 83, 'en': 'Khouribga', 'ar': 'خريبكة', 'fr': 'Khouribga'},
-    'El Jadida': {'id': 74, 'en': 'El Jadida', 'ar': 'الجديدة', 'fr': 'El Jadida'},
-    'Taza': {'id': 105, 'en': 'Taza', 'ar': 'تازة', 'fr': 'Taza'},
-    'Nador': {'id': 91, 'en': 'Nador', 'ar': 'الناظور', 'fr': 'Nador'},
-    'Settat': {'id': 98, 'en': 'Settat', 'ar': 'سطات', 'fr': 'Settat'},
-    'Larache': {'id': 87, 'en': 'Larache', 'ar': 'العرائش', 'fr': 'Larache'},
-    'Khenifra': {'id': 82, 'en': 'Khenifra', 'ar': 'خنيفرة', 'fr': 'Khenifra'},
-    'Essaouira': {'id': 76, 'en': 'Essaouira', 'ar': 'الصويرة', 'fr': 'Essaouira'},
-    'Chefchaouen': {'id': 72, 'en': 'Chefchaouen', 'ar': 'شفشاون', 'fr': 'Chefchaouen'},
-    'Beni Mellal': {'id': 68, 'en': 'Beni Mellal', 'ar': 'بني ملال', 'fr': 'Beni Mellal'},
-    'Al Hoceima': {'id': 79, 'en': 'Al Hoceima', 'ar': 'الحسيمة', 'fr': 'Al Hoceima'},
-    'Taroudant': {'id': 103, 'en': 'Taroudant', 'ar': 'تارودانت', 'fr': 'Taroudant'},
-    'Ouazzane': {'id': 92, 'en': 'Ouazzane', 'ar': 'وزان', 'fr': 'Ouazzane'},
-    'Sefrou': {'id': 97, 'en': 'Sefrou', 'ar': 'صفرو', 'fr': 'Sefrou'},
-    'Berkane': {'id': 69, 'en': 'Berkane', 'ar': 'بركان', 'fr': 'Berkane'},
-    'Errachidia': {'id': 75, 'en': 'Errachidia', 'ar': 'الراشيدية', 'fr': 'Errachidia'},
-    'Laayoune': {'id': 85, 'en': 'Laayoune', 'ar': 'العيون', 'fr': 'Laayoune'},
-    'Tiznit': {'id': 106, 'en': 'Tiznit', 'ar': 'تزنيت', 'fr': 'Tiznit'},
-    'Ifrane': {'id': 80, 'en': 'Ifrane', 'ar': 'إفران', 'fr': 'Ifrane'},
-    'Zagora': {'id': 107, 'en': 'Zagora', 'ar': 'زاكورة', 'fr': 'Zagora'},
-    'Dakhla': {'id': 73, 'en': 'Dakhla', 'ar': 'الداخلة', 'fr': 'Dakhla'},
-    'Tan Tan': {'id': 102, 'en': 'Tan Tan', 'ar': 'طانطان', 'fr': 'Tan-Tan'},
-    'Sidi Kacem': {'id': 99, 'en': 'Sidi Kacem', 'ar': 'سيدي قاسم', 'fr': 'Sidi Kacem'},
-    'Ksar Lekbir': {'id': 84, 'en': 'Ksar Lekbir', 'ar': 'القصر الكبير', 'fr': 'Ksar el-Kebir'},
-    'Taounate': {'id': 104, 'en': 'Taounate', 'ar': 'تاونات', 'fr': 'Taounate'},
-    'Assila': {'id': 67, 'en': 'Assila', 'ar': 'أصيلة', 'fr': 'Asilah'},
-    'Boulemane': {'id': 70, 'en': 'Boulemane', 'ar': 'بولمان', 'fr': 'Boulemane'},
-    'Kalaat Sraghna': {'id': 94, 'en': 'Kalaat Sraghna', 'ar': 'قلعة السراغنة', 'fr': 'Kalaat es-Sraghna'},
-    'Lagouira': {'id': 86, 'en': 'Lagouira', 'ar': 'الكويرة', 'fr': 'Lagouira'},
-    'Moulay Idriss Zerhoun': {'id': 108, 'en': 'Moulay Idriss Zerhoun', 'ar': 'مولاي إدريس زرهون', 'fr': 'Moulay Idriss Zerhoun'},
-    'Smara': {'id': 77, 'en': 'Smara', 'ar': 'السمارة', 'fr': 'Smara'}
+    'Tangier': {'id': 101, 'en': 'Tangier', 'ar': 'طنجة', 'fr': 'Tanger', 'lat': 35.7595, 'lon': -5.8340},
+    'Casablanca': {'id': 71, 'en': 'Casablanca', 'ar': 'الدار البيضاء', 'fr': 'Casablanca', 'lat': 33.5731, 'lon': -7.5898},
+    'Rabat': {'id': 95, 'en': 'Rabat', 'ar': 'الرباط', 'fr': 'Rabat', 'lat': 34.0209, 'lon': -6.8416},
+    'Marrakech': {'id': 88, 'en': 'Marrakech', 'ar': 'مراكش', 'fr': 'Marrakech', 'lat': 31.6295, 'lon': -7.9811},
+    'Fes': {'id': 78, 'en': 'Fes', 'ar': 'فاس', 'fr': 'Fes', 'lat': 34.0181, 'lon': -5.0078},
+    'Agadir': {'id': 66, 'en': 'Agadir', 'ar': 'أكادير', 'fr': 'Agadir', 'lat': 30.4278, 'lon': -9.5981},
+    'Meknes': {'id': 89, 'en': 'Meknes', 'ar': 'مكناس', 'fr': 'Meknes', 'lat': 33.8935, 'lon': -5.5473},
+    'Oujda': {'id': 93, 'en': 'Oujda', 'ar': 'وجدة', 'fr': 'Oujda', 'lat': 34.6814, 'lon': -1.9086},
+    'Kenitra': {'id': 81, 'en': 'Kenitra', 'ar': 'القنيطرة', 'fr': 'Kenitra', 'lat': 34.2610, 'lon': -6.5802},
+    'Tetouan': {'id': 100, 'en': 'Tetouan', 'ar': 'تطوان', 'fr': 'Tetouan', 'lat': 35.5889, 'lon': -5.3626},
+    'Safi': {'id': 96, 'en': 'Safi', 'ar': 'آسفي', 'fr': 'Safi', 'lat': 32.2994, 'lon': -9.2372},
+    'Mohammedia': {'id': 90, 'en': 'Mohammedia', 'ar': 'المحمدية', 'fr': 'Mohammedia', 'lat': 33.6866, 'lon': -7.3837},
+    'Khouribga': {'id': 83, 'en': 'Khouribga', 'ar': 'خريبكة', 'fr': 'Khouribga', 'lat': 32.8811, 'lon': -6.9063},
+    'El Jadida': {'id': 74, 'en': 'El Jadida', 'ar': 'الجديدة', 'fr': 'El Jadida', 'lat': 33.2316, 'lon': -8.5007},
+    'Taza': {'id': 105, 'en': 'Taza', 'ar': 'تازة', 'fr': 'Taza', 'lat': 34.2133, 'lon': -4.0103},
+    'Nador': {'id': 91, 'en': 'Nador', 'ar': 'الناظور', 'fr': 'Nador', 'lat': 35.1681, 'lon': -2.9287},
+    'Settat': {'id': 98, 'en': 'Settat', 'ar': 'سطات', 'fr': 'Settat', 'lat': 33.0018, 'lon': -7.6164},
+    'Larache': {'id': 87, 'en': 'Larache', 'ar': 'العرائش', 'fr': 'Larache', 'lat': 35.1932, 'lon': -6.1563},
+    'Khenifra': {'id': 82, 'en': 'Khenifra', 'ar': 'خنيفرة', 'fr': 'Khenifra', 'lat': 32.9359, 'lon': -5.6675},
+    'Essaouira': {'id': 76, 'en': 'Essaouira', 'ar': 'الصويرة', 'fr': 'Essaouira', 'lat': 31.5085, 'lon': -9.7595},
+    'Chefchaouen': {'id': 72, 'en': 'Chefchaouen', 'ar': 'شفشاون', 'fr': 'Chefchaouen', 'lat': 35.1688, 'lon': -5.2636},
+    'Beni Mellal': {'id': 68, 'en': 'Beni Mellal', 'ar': 'بني ملال', 'fr': 'Beni Mellal', 'lat': 32.3373, 'lon': -6.3498},
+    'Al Hoceima': {'id': 79, 'en': 'Al Hoceima', 'ar': 'الحسيمة', 'fr': 'Al Hoceima', 'lat': 35.2517, 'lon': -3.9316},
+    'Taroudant': {'id': 103, 'en': 'Taroudant', 'ar': 'تارودانت', 'fr': 'Taroudant', 'lat': 30.4703, 'lon': -8.8770},
+    'Ouazzane': {'id': 92, 'en': 'Ouazzane', 'ar': 'وزان', 'fr': 'Ouazzane', 'lat': 34.7936, 'lon': -5.5836},
+    'Sefrou': {'id': 97, 'en': 'Sefrou', 'ar': 'صفرو', 'fr': 'Sefrou', 'lat': 33.8307, 'lon': -4.8372},
+    'Berkane': {'id': 69, 'en': 'Berkane', 'ar': 'بركان', 'fr': 'Berkane', 'lat': 34.9218, 'lon': -2.3200},
+    'Errachidia': {'id': 75, 'en': 'Errachidia', 'ar': 'الراشيدية', 'fr': 'Errachidia', 'lat': 31.9314, 'lon': -4.4244},
+    'Laayoune': {'id': 85, 'en': 'Laayoune', 'ar': 'العيون', 'fr': 'Laayoune', 'lat': 27.1253, 'lon': -13.1625},
+    'Tiznit': {'id': 106, 'en': 'Tiznit', 'ar': 'تزنيت', 'fr': 'Tiznit', 'lat': 29.6974, 'lon': -9.7316},
+    'Ifrane': {'id': 80, 'en': 'Ifrane', 'ar': 'إفران', 'fr': 'Ifrane', 'lat': 33.5228, 'lon': -5.1106},
+    'Zagora': {'id': 107, 'en': 'Zagora', 'ar': 'زاكورة', 'fr': 'Zagora', 'lat': 30.3314, 'lon': -5.8372},
+    'Dakhla': {'id': 73, 'en': 'Dakhla', 'ar': 'الداخلة', 'fr': 'Dakhla', 'lat': 23.6848, 'lon': -15.9570},
+    'Tan Tan': {'id': 102, 'en': 'Tan Tan', 'ar': 'طانطان', 'fr': 'Tan-Tan', 'lat': 28.4378, 'lon': -11.1031},
+    'Sidi Kacem': {'id': 99, 'en': 'Sidi Kacem', 'ar': 'سيدي قاسم', 'fr': 'Sidi Kacem', 'lat': 34.2214, 'lon': -5.7081},
+    'Ksar Lekbir': {'id': 84, 'en': 'Ksar Lekbir', 'ar': 'القصر الكبير', 'fr': 'Ksar el-Kebir', 'lat': 35.0119, 'lon': -5.9033},
+    'Taounate': {'id': 104, 'en': 'Taounate', 'ar': 'تاونات', 'fr': 'Taounate', 'lat': 34.5386, 'lon': -4.6372},
+    'Assila': {'id': 67, 'en': 'Assila', 'ar': 'أصيلة', 'fr': 'Asilah', 'lat': 35.4650, 'lon': -6.0362},
+    'Boulemane': {'id': 70, 'en': 'Boulemane', 'ar': 'بولمان', 'fr': 'Boulemane', 'lat': 33.3614, 'lon': -4.7331},
+    'Kalaat Sraghna': {'id': 94, 'en': 'Kalaat Sraghna', 'ar': 'قلعة السراغنة', 'fr': 'Kalaat es-Sraghna', 'lat': 32.0587, 'lon': -7.4103},
+    'Lagouira': {'id': 86, 'en': 'Lagouira', 'ar': 'الكويرة', 'fr': 'Lagouira', 'lat': 20.9331, 'lon': -17.0439},
+    'Moulay Idriss Zerhoun': {'id': 108, 'en': 'Moulay Idriss Zerhoun', 'ar': 'مولاي إدريس زرهون', 'fr': 'Moulay Idriss Zerhoun', 'lat': 34.0581, 'lon': -5.5203},
+    'Smara': {'id': 77, 'en': 'Smara', 'ar': 'السمارة', 'fr': 'Smara', 'lat': 26.7386, 'lon': -11.6719}
 }
 
 class SettingsDialog(QDialog):
@@ -692,6 +696,70 @@ class CitySelectionDialog(QDialog):
             return self.get_city_key_from_translated(translated_name)
         return 'Tangier'
 
+class OfflineSunriseCalculator:
+    @staticmethod
+    def calculate_sunrise(city_name, date):
+        """Calculate sunrise time offline using astronomical formulas"""
+        if city_name not in CITIES or 'lat' not in CITIES[city_name]:
+            return None
+        
+        lat = CITIES[city_name]['lat']
+        lon = CITIES[city_name]['lon']
+        
+        # Get day of year
+        day_of_year = date.timetuple().tm_yday
+        
+        # Calculate solar declination (δ)
+        declination = 23.44 * math.sin(math.radians(360 * (284 + day_of_year) / 365))
+        
+        # Convert latitude to radians
+        lat_rad = math.radians(lat)
+        decl_rad = math.radians(declination)
+        
+        # Calculate hour angle (ω) for sunrise
+        try:
+            cos_hour_angle = -math.tan(lat_rad) * math.tan(decl_rad)
+            # Clamp to valid range [-1, 1]
+            cos_hour_angle = max(-1, min(1, cos_hour_angle))
+            hour_angle = math.degrees(math.acos(cos_hour_angle))
+        except:
+            return None
+        
+        # Morocco timezone offset (UTC+1, no DST)
+        timezone_offset = 1
+        
+        # Compute solar noon
+        solar_noon = 12 - (lon / 15 - timezone_offset)
+        
+        # Compute sunrise time
+        sunrise_time = solar_noon - (hour_angle / 15)
+        
+        # Convert to hours and minutes
+        hours = int(sunrise_time)
+        minutes = int((sunrise_time - hours) * 60)
+        
+        # Ensure valid time format
+        hours = max(0, min(23, hours))
+        minutes = max(0, min(59, minutes))
+        
+        return f"{hours:02d}:{minutes:02d}"
+    
+    @staticmethod
+    def calculate_all_prayer_times(city_name, date):
+        """Calculate all prayer times for a city and date"""
+        sunrise = OfflineSunriseCalculator.calculate_sunrise(city_name, date)
+        if not sunrise:
+            return None
+        
+        # For now, return sunrise as Chorok
+        # This can be extended to calculate other prayer times
+        return {
+            'Date': date.strftime('%d/%m'),
+            'Sunrise': sunrise,
+            # Other prayers would be calculated here
+            # For now, we'll still use web scraping for full prayer times
+        }
+
 class PrayerTimeWorker(QThread):
     data_received = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
@@ -765,9 +833,35 @@ class PrayerTimeWorker(QThread):
                 else:
                     self.error_occurred.emit("No prayer times found for today")
             except Exception as e:
-                self.error_occurred.emit(str(e))
+                # Fallback to offline calculation
+                self.try_offline_calculation()
         else:
-            self.error_occurred.emit("No internet connection and no cached data")
+            # No internet: try offline calculation
+            self.try_offline_calculation()
+    
+    def try_offline_calculation(self):
+        """Try to calculate prayer times offline"""
+        try:
+            today = datetime.now()
+            calculated_times = OfflineSunriseCalculator.calculate_all_prayer_times(self.city_name, today)
+            
+            if calculated_times:
+                # For now, we only have sunrise calculation
+                # Show partial data with calculated sunrise
+                partial_times = {
+                    'Date': today.strftime('%d/%m'),
+                    'Fajr': '--:--',
+                    'Sunrise': calculated_times['Sunrise'],
+                    'Dohr': '--:--',
+                    'Asr': '--:--',
+                    'Maghreb': '--:--',
+                    'Isha': '--:--'
+                }
+                self.offline_data_loaded.emit(partial_times, 0)
+            else:
+                self.error_occurred.emit("No internet connection and calculation failed")
+        except Exception as e:
+            self.error_occurred.emit(f"Offline calculation error: {str(e)}")
     
     def save_update_timestamp(self):
         """Save when we last updated the data"""
@@ -784,6 +878,11 @@ class PrayerTimeWorker(QThread):
                 json.dump(update_info, f, indent=2)
         except Exception as e:
             print(f"Could not save update timestamp: {e}")
+    
+    def get_city_coordinates(self):
+        """Get coordinates for current city"""
+        city_data = CITIES.get(self.city_name, {})
+        return city_data.get('lat'), city_data.get('lon')
     
     def check_internet_connection(self):
         try:
@@ -1486,7 +1585,7 @@ class ModernSalahApp(QMainWindow):
     
     def load_prayer_times(self):
         # Show loading state in prayer cards
-        for prayer in ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+        for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
             if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
                 # Update card to show loading
                 card = self.prayer_cards[prayer]
@@ -1532,11 +1631,19 @@ class ModernSalahApp(QMainWindow):
     def _display_prayer_times_common(self, prayer_times):
         current_prayer = self.get_current_prayer()
         
-        # Update prayer cards with new times and styling
+        # Map Sunrise to Chorok for display
+        display_times = {}
         for prayer, time in prayer_times.items():
+            if prayer == 'Sunrise':
+                display_times['Chorok'] = time
+            else:
+                display_times[prayer] = time
+        
+        # Update prayer cards with new times and styling
+        for prayer, time in display_times.items():
             if prayer in self.prayer_cards and prayer != 'Date':
                 card = self.prayer_cards[prayer]
-                is_current = (prayer == current_prayer)
+                is_current = (prayer == current_prayer or (prayer == 'Chorok' and current_prayer == 'Sunrise'))
                 
                 # Update card styling
                 card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
@@ -1743,7 +1850,7 @@ class ModernSalahApp(QMainWindow):
             
     def show_error(self, error_message):
         # Show error in prayer cards
-        for prayer in ['Fajr', 'Sunrise', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+        for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
             if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
                 card = self.prayer_cards[prayer]
                 for child in card.findChildren(QLabel):
