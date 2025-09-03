@@ -471,11 +471,11 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 # Prayer time notification - trigger only once per minute
                 if current_time == prayer_time:
                     if prayer not in self.notification_counts:
+                        max_repeats = prayer_config.get('repeat_count', 3)
                         self.notification_counts[prayer] = 1
                         self.send_prayer_notification_immediate(prayer)
                         
                         # Schedule repeats if configured
-                        max_repeats = prayer_config.get('repeat_count', 3)
                         if max_repeats > 1:
                             self.schedule_repeat_notifications(prayer, max_repeats)
                 
@@ -508,8 +508,18 @@ class SalahTrayIndicator(QSystemTrayIcon):
     def send_repeat_notification(self, prayer, repeat_num):
         """Send a repeat notification"""
         if prayer in self.notification_counts:  # Only if not cancelled
-            self.notification_counts[prayer] = repeat_num
-            self.send_prayer_notification_immediate(prayer)
+            notification_settings = self.load_notification_settings()
+            prayer_config = notification_settings.get(prayer, {'repeat_count': 3})
+            max_repeats = prayer_config.get('repeat_count', 3)
+            
+            # Only send if we haven't exceeded the configured repeat count
+            if repeat_num <= max_repeats:
+                self.notification_counts[prayer] = repeat_num
+                self.send_prayer_notification_immediate(prayer)
+            else:
+                # Clean up if we've reached the limit
+                del self.notification_counts[prayer]
+                self.cancel_prayer_timers(prayer)
     
     def cancel_prayer_timers(self, prayer):
         """Cancel all pending timers for a prayer"""

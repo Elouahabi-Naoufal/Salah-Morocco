@@ -838,19 +838,7 @@ class SettingsDialog(QDialog):
             from datetime import datetime
             current_time = datetime.now().strftime("%H:%M")
             
-            # Send test system notification with actions
-            subprocess.run([
-                'notify-send',
-                '🔔 Test Prayer Time',
-                f'This is a test notification\nTime: {current_time}\nSound: {"Enabled" if self.sound_enabled.isChecked() else "Disabled"}',
-                '--urgency=critical',
-                '--expire-time=0',  # Don't auto-expire for testing
-                '--icon=appointment-soon',
-                '--action=snooze=😴 Snooze',
-                '--action=stop=⏹️ Stop'
-            ], check=False, timeout=5)
-            
-            # Test sound if enabled
+            # Play sound FIRST if enabled
             if self.sound_enabled.isChecked():
                 try:
                     subprocess.run(['paplay', '/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga'], 
@@ -861,6 +849,17 @@ class SettingsDialog(QDialog):
                                      check=False, timeout=3)
                     except:
                         print('\a')  # Fallback beep
+            
+            # Send test system notification with actions AFTER sound
+            subprocess.Popen([
+                'notify-send',
+                '🔔 Test Prayer Time',
+                f'This is a test notification\nTime: {current_time}\nSound: {"Enabled" if self.sound_enabled.isChecked() else "Disabled"}',
+                '--urgency=critical',
+                '--expire-time=0',  # Don't auto-expire for testing
+                '--icon=appointment-soon',
+                '--action=stop=⏹️ Stop'
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
         except Exception as e:
             QMessageBox.warning(self, "Test Failed", f"Could not test notification: {e}")
