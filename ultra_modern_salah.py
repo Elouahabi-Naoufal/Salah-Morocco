@@ -181,8 +181,8 @@ class SettingsDialog(QDialog):
         
     def init_ui(self):
         self.setWindowTitle(self.tr('settings'))
-        self.setMinimumSize(600, 700)
-        self.resize(650, 750)
+        self.setMinimumSize(750, 800)
+        self.resize(800, 850)
         self.setModal(True)
         self.setStyleSheet(self.get_modern_settings_stylesheet())
         
@@ -552,6 +552,18 @@ class SettingsDialog(QDialog):
         layout.setSpacing(20)
         layout.setContentsMargins(10, 10, 10, 10)
         
+        # Title
+        title = QLabel("Configure Iqama Delay Times")
+        title.setProperty("class", "section_label")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+        
+        # Description
+        desc = QLabel("Set the delay time (in minutes) between Adhan and Iqama for each prayer:")
+        desc.setStyleSheet("color: #666; font-size: 12px;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        
         # Iqama times card
         iqama_card = QWidget()
         iqama_card.setProperty("class", "settings_card")
@@ -559,18 +571,6 @@ class SettingsDialog(QDialog):
         card_layout = QVBoxLayout(iqama_card)
         card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(15)
-        
-        # Title
-        title = QLabel("Configure Iqama Delay Times")
-        title.setProperty("class", "section_label")
-        title.setWordWrap(True)
-        card_layout.addWidget(title)
-        
-        # Description
-        desc = QLabel("Set the delay time (in minutes) between Adhan and Iqama for each prayer:")
-        desc.setStyleSheet("color: #666; font-size: 12px;")
-        desc.setWordWrap(True)
-        card_layout.addWidget(desc)
         
         # Iqama inputs
         self.iqama_inputs = {}
@@ -613,7 +613,7 @@ class SettingsDialog(QDialog):
             
             card_layout.addWidget(row)
         
-        layout.addWidget(iqama_card)
+        layout.addWidget(iqama_card, 1)
         
         # Reset button
         reset_btn = QPushButton("🔄 Reset to Defaults")
@@ -629,163 +629,155 @@ class SettingsDialog(QDialog):
     def create_notifications_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setSpacing(20)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
         
-        # Notifications card
-        notifications_card = QWidget()
-        notifications_card.setProperty("class", "settings_card")
+        # Prayer notifications section
+        prayer_section = QWidget()
+        prayer_section.setProperty("class", "settings_card")
         
-        card_layout = QVBoxLayout(notifications_card)
-        card_layout.setContentsMargins(0, 0, 0, 0)
-        card_layout.setSpacing(15)
+        prayer_layout = QVBoxLayout(prayer_section)
+        prayer_layout.setContentsMargins(20, 20, 20, 20)
+        prayer_layout.setSpacing(15)
         
         # Title
         title = QLabel("Prayer Notification Settings")
         title.setProperty("class", "section_label")
-        title.setWordWrap(True)
-        card_layout.addWidget(title)
+        prayer_layout.addWidget(title)
         
         # Description
-        desc = QLabel("Configure notifications for each prayer time:")
+        desc = QLabel("Configure notifications for each prayer:")
         desc.setStyleSheet("color: #666; font-size: 12px;")
-        desc.setWordWrap(True)
-        card_layout.addWidget(desc)
+        prayer_layout.addWidget(desc)
         
-        # Notification inputs
+        # Prayer settings grid
+        grid_widget = QWidget()
+        grid = QGridLayout(grid_widget)
+        grid.setSpacing(10)
+        grid.setContentsMargins(0, 10, 0, 0)
+        
+        # Headers
+        grid.addWidget(QLabel("Prayer"), 0, 0)
+        grid.addWidget(QLabel("Enable"), 0, 1)
+        grid.addWidget(QLabel("Repeat"), 0, 2)
+        
+        # Prayer rows
         self.notification_inputs = {}
         prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
         icons = {'Fajr': '☽', 'Dohr': '☉', 'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
-        for prayer in prayers:
-            row = QWidget()
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(15)
-            
-            # Prayer icon and name
-            prayer_info = QWidget()
-            info_layout = QHBoxLayout(prayer_info)
-            info_layout.setContentsMargins(0, 0, 0, 0)
-            info_layout.setSpacing(8)
+        for i, prayer in enumerate(prayers, 1):
+            # Prayer name with icon
+            prayer_widget = QWidget()
+            prayer_widget_layout = QHBoxLayout(prayer_widget)
+            prayer_widget_layout.setContentsMargins(0, 0, 0, 0)
+            prayer_widget_layout.setSpacing(8)
             
             icon_label = QLabel(icons[prayer])
-            icon_label.setStyleSheet("font-size: 18px;")
-            info_layout.addWidget(icon_label)
+            icon_label.setStyleSheet("font-size: 16px;")
+            prayer_widget_layout.addWidget(icon_label)
             
             name_label = QLabel(self.tr_prayer(prayer))
-            name_label.setProperty("class", "iqama_label")
-            info_layout.addWidget(name_label)
-            info_layout.addStretch()
+            name_label.setStyleSheet("font-weight: 500;")
+            prayer_widget_layout.addWidget(name_label)
+            prayer_widget_layout.addStretch()
             
-            row_layout.addWidget(prayer_info, 1)
+            grid.addWidget(prayer_widget, i, 0)
             
             # Enable checkbox
-            enable_checkbox = QCheckBox("Enable")
+            enable_checkbox = QCheckBox()
             enable_checkbox.setChecked(self.notification_settings.get(prayer, {}).get('enabled', True))
-            row_layout.addWidget(enable_checkbox)
+            grid.addWidget(enable_checkbox, i, 1)
             
             # Repeat count
-            repeat_label = QLabel("Repeat:")
-            repeat_label.setStyleSheet("color: #666; font-size: 12px;")
-            row_layout.addWidget(repeat_label)
-            
             repeat_spinbox = QSpinBox()
             repeat_spinbox.setProperty("class", "iqama_input")
             repeat_spinbox.setMinimum(1)
             repeat_spinbox.setMaximum(10)
             repeat_spinbox.setValue(self.notification_settings.get(prayer, {}).get('repeat_count', 3))
             repeat_spinbox.setSuffix(" times")
-            row_layout.addWidget(repeat_spinbox)
+            repeat_spinbox.setFixedWidth(120)
+            grid.addWidget(repeat_spinbox, i, 2)
             
             self.notification_inputs[prayer] = {
                 'enabled': enable_checkbox,
                 'repeat_count': repeat_spinbox
             }
-            
-            card_layout.addWidget(row)
         
-        layout.addWidget(notifications_card)
+        prayer_layout.addWidget(grid_widget)
+        layout.addWidget(prayer_section)
         
-        # Sound settings
-        sound_card = QWidget()
-        sound_card.setProperty("class", "settings_card")
+        # Sound settings section (compact)
+        sound_section = QWidget()
+        sound_section.setProperty("class", "settings_card")
         
-        sound_layout = QVBoxLayout(sound_card)
-        sound_layout.setContentsMargins(0, 0, 0, 0)
-        sound_layout.setSpacing(12)
+        sound_layout = QVBoxLayout(sound_section)
+        sound_layout.setContentsMargins(20, 15, 20, 15)
+        sound_layout.setSpacing(10)
         
-        sound_title = QLabel("Sound Settings")
+        sound_title = QLabel("Sound & Timing")
         sound_title.setProperty("class", "section_label")
         sound_layout.addWidget(sound_title)
         
+        # Horizontal layout for all settings
+        settings_row = QWidget()
+        settings_layout = QHBoxLayout(settings_row)
+        settings_layout.setSpacing(20)
+        
         # Sound enabled
-        self.sound_enabled = QCheckBox("Enable notification sounds")
+        self.sound_enabled = QCheckBox("Enable sounds")
         self.sound_enabled.setChecked(self.notification_settings.get('sound_enabled', True))
-        sound_layout.addWidget(self.sound_enabled)
+        settings_layout.addWidget(self.sound_enabled)
         
         # Snooze duration
-        snooze_row = QWidget()
-        snooze_layout = QHBoxLayout(snooze_row)
-        snooze_layout.setContentsMargins(0, 0, 0, 0)
-        
-        snooze_label = QLabel("Snooze duration:")
-        snooze_layout.addWidget(snooze_label)
-        
+        settings_layout.addWidget(QLabel("Snooze:"))
         self.snooze_duration = QSpinBox()
         self.snooze_duration.setProperty("class", "iqama_input")
         self.snooze_duration.setMinimum(1)
         self.snooze_duration.setMaximum(30)
         self.snooze_duration.setValue(self.notification_settings.get('snooze_duration', 5))
         self.snooze_duration.setSuffix(" min")
-        snooze_layout.addWidget(self.snooze_duration)
-        
-        snooze_layout.addStretch()
-        sound_layout.addWidget(snooze_row)
+        self.snooze_duration.setFixedWidth(100)
+        settings_layout.addWidget(self.snooze_duration)
         
         # Notification interval
-        interval_row = QWidget()
-        interval_layout = QHBoxLayout(interval_row)
-        interval_layout.setContentsMargins(0, 0, 0, 0)
-        
-        interval_label = QLabel("Repeat interval:")
-        interval_layout.addWidget(interval_label)
-        
+        settings_layout.addWidget(QLabel("Interval:"))
         self.notification_interval = QSpinBox()
         self.notification_interval.setProperty("class", "iqama_input")
         self.notification_interval.setMinimum(1)
         self.notification_interval.setMaximum(10)
         self.notification_interval.setValue(self.notification_settings.get('notification_interval', 2))
         self.notification_interval.setSuffix(" min")
-        interval_layout.addWidget(self.notification_interval)
+        self.notification_interval.setFixedWidth(100)
+        settings_layout.addWidget(self.notification_interval)
         
-        interval_layout.addStretch()
-        sound_layout.addWidget(interval_row)
+        settings_layout.addStretch()
+        sound_layout.addWidget(settings_row)
+        layout.addWidget(sound_section)
         
-        layout.addWidget(sound_card)
+        # Buttons section
+        buttons_section = QWidget()
+        buttons_section.setProperty("class", "settings_card")
         
-        # Test and Reset buttons
-        button_row = QWidget()
-        button_layout = QHBoxLayout(button_row)
-        button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.setSpacing(15)
+        buttons_layout = QHBoxLayout(buttons_section)
+        buttons_layout.setContentsMargins(20, 15, 20, 15)
+        buttons_layout.setSpacing(15)
         
         # Test notification button
         test_btn = QPushButton("🔔 Test Notification")
         test_btn.setProperty("class", "modern_button")
         test_btn.clicked.connect(self.test_notification)
         test_btn.setCursor(Qt.PointingHandCursor)
-        button_layout.addWidget(test_btn)
+        buttons_layout.addWidget(test_btn)
         
         # Reset button
         reset_btn = QPushButton("🔄 Reset to Defaults")
         reset_btn.setProperty("class", "cancel_button")
         reset_btn.clicked.connect(self.reset_notification_settings)
         reset_btn.setCursor(Qt.PointingHandCursor)
-        button_layout.addWidget(reset_btn)
+        buttons_layout.addWidget(reset_btn)
         
-        layout.addWidget(button_row)
-        
+        layout.addWidget(buttons_section)
         layout.addStretch()
         
         return tab
@@ -2307,7 +2299,7 @@ class ModernSalahApp(QMainWindow):
                     self.next_time.setText(self.prayer_times[prayer])
                     return
         
-        if prayers:
+        if prayers and prayers[0] in self.prayer_times:
             first_prayer = prayers[0]
             self.next_name.setText(f"{self.tr_prayer(first_prayer)} ({self.tr('tomorrow')})")
             self.next_time.setText(self.prayer_times[first_prayer])
@@ -2416,11 +2408,22 @@ class ModernSalahApp(QMainWindow):
                     break
         
         if not next_prayer_time and prayers:
-            first_prayer = prayers[0]  # This should be Fajr
-            fajr_time = self.parse_time(self.prayer_times[first_prayer])
-            # Calculate minutes until tomorrow's Fajr
-            minutes_until_midnight = (24 * 60) - current_time
-            remaining = minutes_until_midnight + fajr_time
+            # After last prayer, calculate time to tomorrow's first prayer (Fajr)
+            first_prayer = 'Fajr'  # Use 'Fajr' directly
+            if first_prayer in self.prayer_times:
+                fajr_time_str = self.prayer_times[first_prayer]
+                fajr_minutes = self.parse_time(fajr_time_str)
+                
+                # Calculate tomorrow's Fajr as total minutes from now
+                tomorrow_fajr_total_minutes = (24 * 60) + fajr_minutes
+                remaining = tomorrow_fajr_total_minutes - current_time
+                
+                print(f"Debug: Current time: {now.hour:02d}:{now.minute:02d} ({current_time} minutes)")
+                print(f"Debug: Today's Fajr: {fajr_time_str} ({fajr_minutes} minutes)")
+                print(f"Debug: Tomorrow's Fajr total: {tomorrow_fajr_total_minutes} minutes")
+                print(f"Debug: Time until tomorrow's Fajr: {remaining} minutes ({remaining//60}h {remaining%60}m)")
+            else:
+                remaining = 0
         else:
             remaining = next_prayer_time - current_time if next_prayer_time else 0
         

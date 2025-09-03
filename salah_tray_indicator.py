@@ -682,8 +682,9 @@ class SalahTrayIndicator(QSystemTrayIcon):
         if prayer_time > current_time:
             remaining = prayer_time - current_time
         else:
-            # Tomorrow's prayer
-            remaining = (24 * 60) - current_time + prayer_time
+            # Tomorrow's prayer - calculate time until tomorrow's prayer
+            minutes_until_midnight = (24 * 60) - current_time
+            remaining = minutes_until_midnight + prayer_time
         
         hours = remaining // 60
         minutes = remaining % 60
