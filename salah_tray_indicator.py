@@ -283,9 +283,14 @@ class SalahTrayIndicator(QSystemTrayIcon):
         self.update_prayer_menu()
         self.update_display()
         # Reset notification flags when new data is loaded
-        self.last_notification = None
-        self.iqama_notification_sent = False
         self.notification_counts = {}
+        # Cancel all pending timers
+        if hasattr(self, 'prayer_timers'):
+            for prayer, timers in self.prayer_timers.items():
+                for timer in timers:
+                    if timer.isActive():
+                        timer.stop()
+            self.prayer_timers = {}
     
     def on_error(self, error):
         self.setToolTip(f"Salah Times - Error: {error}")
@@ -448,65 +453,74 @@ class SalahTrayIndicator(QSystemTrayIcon):
         
         now = datetime.now()
         current_time = now.hour * 60 + now.minute
+        current_minute_key = f"{now.hour:02d}:{now.minute:02d}"
         
         prayers = [name for name in self.prayer_times.keys() if name != 'Date']
         notification_settings = self.load_notification_settings()
         
         for prayer in prayers:
             if prayer in self.prayer_times:
-                prayer_time = self.parse_time(self.prayer_times[prayer])
-                iqama_delay = self.get_iqama_delay(prayer)
-                iqama_warning_time = prayer_time + iqama_delay - 2
+                prayer_time_str = self.prayer_times[prayer]
+                prayer_time = self.parse_time(prayer_time_str)
                 
                 # Check if notifications are enabled for this prayer
                 prayer_config = notification_settings.get(prayer, {'enabled': True, 'repeat_count': 3})
                 if not prayer_config.get('enabled', True):
                     continue
                 
-                # Prayer time notification with repeats
-                if abs(current_time - prayer_time) <= 1:
+                # Prayer time notification - trigger only once per minute
+                if current_time == prayer_time:
                     if prayer not in self.notification_counts:
-                        self.notification_counts[prayer] = 0
-                    
-                    max_repeats = prayer_config.get('repeat_count', 3)
-                    if self.notification_counts[prayer] < max_repeats:
-                        self.send_prayer_alarm(prayer)
-                        self.notification_counts[prayer] += 1
+                        self.notification_counts[prayer] = 1
+                        self.send_prayer_notification_immediate(prayer)
                         
-                        # Schedule next repeat based on interval setting
-                        if self.notification_counts[prayer] < max_repeats:
-                            interval_minutes = notification_settings.get('notification_interval', 2)
-                            interval_ms = interval_minutes * 60 * 1000
-                            QTimer.singleShot(interval_ms, lambda p=prayer: self.repeat_notification(p))
-                    
-                    self.last_notification = prayer
-                    self.iqama_notification_sent = False
+                        # Schedule repeats if configured
+                        max_repeats = prayer_config.get('repeat_count', 3)
+                        if max_repeats > 1:
+                            self.schedule_repeat_notifications(prayer, max_repeats)
                 
-                # Reset notification count for next day
-                elif abs(current_time - prayer_time) > 60:
+                # Reset notification count after prayer time window
+                elif current_time > prayer_time + 5:  # 5 minutes after prayer
                     if prayer in self.notification_counts:
                         del self.notification_counts[prayer]
-                
-                # Iqama 2-minute warning
-                if (abs(current_time - iqama_warning_time) <= 1 and 
-                    not self.iqama_notification_sent and 
-                    self.last_notification == prayer):
-                    self.send_iqama_warning(prayer)
-                    self.iqama_notification_sent = True
+                        # Cancel any pending timers for this prayer
+                        self.cancel_prayer_timers(prayer)
     
-    def repeat_notification(self, prayer):
-        """Repeat notification for prayer"""
-        if prayer in self.notification_counts:
-            notification_settings = self.load_notification_settings()
-            prayer_config = notification_settings.get(prayer, {'enabled': True, 'repeat_count': 3})
-            max_repeats = prayer_config.get('repeat_count', 3)
-            
-            if self.notification_counts[prayer] < max_repeats:
-                self.send_prayer_alarm(prayer)
-                self.notification_counts[prayer] += 1
+    def schedule_repeat_notifications(self, prayer, max_repeats):
+        """Schedule repeat notifications for a prayer"""
+        notification_settings = self.load_notification_settings()
+        interval_minutes = notification_settings.get('notification_interval', 2)
+        interval_ms = interval_minutes * 60 * 1000
+        
+        # Store timers to allow cancellation
+        if not hasattr(self, 'prayer_timers'):
+            self.prayer_timers = {}
+        
+        self.prayer_timers[prayer] = []
+        
+        for repeat_num in range(2, max_repeats + 1):  # Start from 2nd notification
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda p=prayer, n=repeat_num: self.send_repeat_notification(p, n))
+            timer.start((repeat_num - 1) * interval_ms)
+            self.prayer_timers[prayer].append(timer)
     
-    def send_prayer_alarm(self, prayer):
-        """Send system notification with snooze/stop actions"""
+    def send_repeat_notification(self, prayer, repeat_num):
+        """Send a repeat notification"""
+        if prayer in self.notification_counts:  # Only if not cancelled
+            self.notification_counts[prayer] = repeat_num
+            self.send_prayer_notification_immediate(prayer)
+    
+    def cancel_prayer_timers(self, prayer):
+        """Cancel all pending timers for a prayer"""
+        if hasattr(self, 'prayer_timers') and prayer in self.prayer_timers:
+            for timer in self.prayer_timers[prayer]:
+                if timer.isActive():
+                    timer.stop()
+            del self.prayer_timers[prayer]
+    
+    def send_prayer_notification_immediate(self, prayer):
+        """Send immediate system notification with sound"""
         try:
             prayer_name = self.tr_prayer(prayer)
             prayer_time = self.prayer_times[prayer]
@@ -521,6 +535,9 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 current_count = self.notification_counts[prayer]
                 repeat_info = f" ({current_count}/{max_repeats})"
             
+            # Play sound immediately BEFORE notification
+            self.play_system_sound()
+            
             # Send system notification with actions
             subprocess.run([
                 'notify-send',
@@ -529,12 +546,8 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 '--urgency=critical',
                 '--expire-time=0',  # Don't auto-expire
                 '--icon=appointment-soon',
-                '--action=snooze=😴 Snooze',
-                '--action=stop=⏹️ Stop'
-            ], check=False, timeout=5)
-            
-            # Play sound if enabled
-            self.play_system_sound()
+                '--action=stop=⏹️ Stop All'
+            ], check=False, timeout=2)
             
         except Exception as e:
             print(f"Could not send system notification: {e}")
@@ -563,17 +576,12 @@ class SalahTrayIndicator(QSystemTrayIcon):
         
         self.play_system_sound()
     
-    def send_iqama_warning(self, prayer):
-        prayer_name = self.tr_prayer(prayer)
-        
-        self.showMessage(
-            f"⏰ Iqama Warning",
-            f"2 minutes left for Iqama of {prayer_name} prayer!",
-            QSystemTrayIcon.Warning,
-            5000
-        )
-        
-        self.play_system_sound()
+    def stop_all_notifications(self, prayer):
+        """Stop all notifications for a prayer"""
+        if prayer in self.notification_counts:
+            del self.notification_counts[prayer]
+        self.cancel_prayer_timers(prayer)
+        print(f"Stopped all notifications for {prayer}")
     
     def play_system_sound(self):
         """Play system sound if enabled"""
