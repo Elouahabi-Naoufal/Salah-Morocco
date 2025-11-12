@@ -217,12 +217,17 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Timer for checking prayer times and notifications
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_notifications)
-        self.timer.start(30000)  # Check every 30 seconds
+        self.timer.start(60000)  # Check every minute (less frequent)
         
         # Timer for updating tooltip and menu
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
         self.update_timer.start(1000)  # Update every second for live countdown
+        
+        # Timer to reload cache periodically
+        self.cache_timer = QTimer()
+        self.cache_timer.timeout.connect(self.load_prayer_times)
+        self.cache_timer.start(300000)  # Check cache every 5 minutes
     
     def setup_config_watcher(self):
         # Timer to check for config file changes
@@ -250,12 +255,29 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 self.load_prayer_times()  # Refresh prayer times
     
     def load_prayer_times(self):
-        city_id = CITIES.get(self.current_city, {'id': 101})['id']
-        self.worker = PrayerTimeWorker(city_id, self.current_city)
-        self.worker.data_received.connect(self.on_prayer_times_loaded)
-        self.worker.offline_data_loaded.connect(self.on_prayer_times_loaded)
-        self.worker.error_occurred.connect(self.on_error)
-        self.worker.start()
+        """Load prayer times from main app's cache only"""
+        try:
+            # Load from main app's cities cache ONLY
+            cities_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
+            city_file = os.path.join(cities_folder, f'{self.current_city.lower()}.json')
+            
+            if os.path.exists(city_file):
+                with open(city_file, 'r', encoding='utf-8') as f:
+                    city_data = json.load(f)
+                    today = datetime.now().strftime('%d/%m')
+                    if today in city_data['prayer_times']:
+                        self.prayer_times = city_data['prayer_times'][today]
+                        print(f"Tray: Loaded cached prayer times for {self.current_city}")
+                        self.on_prayer_times_loaded(self.prayer_times)
+                        return
+            
+            # No cache available - use empty times (don't fetch)
+            print(f"Tray: No cached data for {self.current_city}, waiting for main app")
+            self.prayer_times = {}
+            
+        except Exception as e:
+            print(f"Tray: Error loading prayer times: {e}")
+            self.prayer_times = {}
     
     def refresh_prayer_times(self):
         """Refresh prayer times without closing the menu"""
