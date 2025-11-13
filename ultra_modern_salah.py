@@ -12,6 +12,15 @@ import os
 import subprocess
 import math
 
+# Import display features
+try:
+    from display_features_fixed import MonthlyCalendarDialog, WeeklyScheduleDialog, TimezoneViewDialog
+except ImportError:
+    # Fallback if display_features.py is not available
+    MonthlyCalendarDialog = None
+    WeeklyScheduleDialog = None
+    TimezoneViewDialog = None
+
 # Translation dictionaries
 TRANSLATIONS = {
     'en': {
@@ -37,6 +46,10 @@ TRANSLATIONS = {
         'hijri_months': {'Muharram': 'Muharram', 'Safar': 'Safar', 'Rabi\'al-awwal': 'Rabi al-Awwal', 'Rabi\'al-thani': 'Rabi al-Thani', 'Jumada al-awwal': 'Jumada al-Awwal', 'Jumada al-thani': 'Jumada al-Thani', 'Rajab': 'Rajab', 'Sha\'ban': 'Shaban', 'Ramadan': 'Ramadan', 'Shawwal': 'Shawwal', 'Dhu al-Qi\'dah': 'Dhu al-Qidah', 'Dhu al-Hijjah': 'Dhu al-Hijjah'},
         'language': 'Language',
         'settings': 'Settings',
+        'monthly_calendar': 'Monthly Calendar',
+        'weekly_schedule': 'Weekly Schedule',
+        'timezone_view': 'Multiple Timezones',
+        'view': 'View',
         'prayers': {
             'Date': 'Date',
             'Fajr': 'Fajr',
@@ -71,6 +84,10 @@ TRANSLATIONS = {
         'hijri_months': {'Muharram': 'محرم', 'Safar': 'صفر', 'Rabi\'al-awwal': 'ربيع الأول', 'Rabi\'al-thani': 'ربيع الثاني', 'Jumada al-awwal': 'جمادى الأولى', 'Jumada al-thani': 'جمادى الثانية', 'Rajab': 'رجب', 'Sha\'ban': 'شعبان', 'Ramadan': 'رمضان', 'Shawwal': 'شوال', 'Dhu al-Qi\'dah': 'ذو القعدة', 'Dhu al-Hijjah': 'ذو الحجة'},
         'language': 'اللغة',
         'settings': 'الإعدادات',
+        'monthly_calendar': 'التقويم الشهري',
+        'weekly_schedule': 'الجدول الأسبوعي',
+        'timezone_view': 'مناطق زمنية متعددة',
+        'view': 'عرض',
         'prayers': {
             'Date': 'التاريخ',
             'Fajr': 'الفجر',
@@ -105,6 +122,10 @@ TRANSLATIONS = {
         'hijri_months': {'Muharram': 'Muharram', 'Safar': 'Safar', 'Rabi\'al-awwal': 'Rabi al-Awwal', 'Rabi\'al-thani': 'Rabi al-Thani', 'Jumada al-awwal': 'Jumada al-Awwal', 'Jumada al-thani': 'Jumada al-Thani', 'Rajab': 'Rajab', 'Sha\'ban': 'Shaban', 'Ramadan': 'Ramadan', 'Shawwal': 'Shawwal', 'Dhu al-Qi\'dah': 'Dhu al-Qidah', 'Dhu al-Hijjah': 'Dhu al-Hijjah'},
         'language': 'Langue',
         'settings': 'Parametres',
+        'monthly_calendar': 'Calendrier Mensuel',
+        'weekly_schedule': 'Horaire Hebdomadaire',
+        'timezone_view': 'Fuseaux Horaires Multiples',
+        'view': 'Affichage',
         'prayers': {
             'Date': 'Date',
             'Fajr': 'Fajr',
@@ -1606,6 +1627,9 @@ class ModernSalahApp(QMainWindow):
         self.resize(480, 720)
         self.setStyleSheet(self.get_modern_stylesheet())
         
+        # Create menu bar
+        self.create_menu_bar()
+        
         # Default center position (will be overridden by restore_geometry if saved)
         screen = QDesktopWidget().screenGeometry()
         size = self.geometry()
@@ -1998,6 +2022,77 @@ class ModernSalahApp(QMainWindow):
         layout.addWidget(self.refresh_btn)
         
         return controls
+    
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background: #2d5a27;
+                color: white;
+                border: none;
+                padding: 5px;
+            }
+            QMenuBar::item {
+                background: transparent;
+                padding: 8px 12px;
+                border-radius: 4px;
+            }
+            QMenuBar::item:selected {
+                background: rgba(255, 255, 255, 0.2);
+            }
+            QMenu {
+                background: #2d5a27;
+                color: white;
+                border: 1px solid #4a7c59;
+                border-radius: 6px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background: #4a7c59;
+            }
+        """)
+        
+        # View menu
+        view_menu = menubar.addMenu(self.tr('view'))
+        
+        # Monthly calendar action
+        monthly_action = QAction(f"📅 {self.tr('monthly_calendar')}", self)
+        monthly_action.triggered.connect(self.show_monthly_calendar)
+        view_menu.addAction(monthly_action)
+        
+        # Weekly schedule action
+        weekly_action = QAction(f"📋 {self.tr('weekly_schedule')}", self)
+        weekly_action.triggered.connect(self.show_weekly_schedule)
+        view_menu.addAction(weekly_action)
+        
+        # Timezone view action
+        timezone_action = QAction(f"🌍 {self.tr('timezone_view')}", self)
+        timezone_action.triggered.connect(self.show_timezone_view)
+        view_menu.addAction(timezone_action)
+    
+    def show_monthly_calendar(self):
+        if MonthlyCalendarDialog:
+            dialog = MonthlyCalendarDialog(self.current_city, self.current_language, self)
+            dialog.exec_()
+        else:
+            QMessageBox.information(self, "Feature Unavailable", "Monthly calendar feature is not available.")
+    
+    def show_weekly_schedule(self):
+        if WeeklyScheduleDialog:
+            dialog = WeeklyScheduleDialog(self.current_city, self.current_language, self)
+            dialog.exec_()
+        else:
+            QMessageBox.information(self, "Feature Unavailable", "Weekly schedule feature is not available.")
+    
+    def show_timezone_view(self):
+        if TimezoneViewDialog:
+            dialog = TimezoneViewDialog(self.current_city, self.current_language, self)
+            dialog.exec_()
+        else:
+            QMessageBox.information(self, "Feature Unavailable", "Timezone view feature is not available.")
         
     def create_date_card_old(self):
         card = QWidget()
@@ -2250,6 +2345,9 @@ class ModernSalahApp(QMainWindow):
     
     def update_ui_language(self):
         self.update_all_ui_text()
+        # Refresh menu bar
+        self.menuBar().clear()
+        self.create_menu_bar()
         # Refresh prayer times display to update translations
         if self.prayer_times:
             self.display_prayer_times(self.prayer_times)
