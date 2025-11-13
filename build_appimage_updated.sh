@@ -27,7 +27,7 @@ a = Analysis(
     ['ultra_modern_salah.py'],
     pathex=[],
     binaries=[],
-    datas=[('display_features_fixed.py', '.')],
+    datas=[('display_features_fixed.py', '.'), ('salah_tray_indicator.py', '.')],
     hiddenimports=['PyQt5.QtPrintSupport'],
     hookspath=[],
     hooksconfig={},
