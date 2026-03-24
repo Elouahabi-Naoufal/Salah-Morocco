@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import math
+import signal
 
 # Import display features
 try:
@@ -1553,7 +1554,7 @@ class ModernSalahApp(QMainWindow):
         self.ensure_notifications_config_exists()
         self.current_language = self.load_language_config()
         self.current_city = self.load_city_config()
-        self.tray_process = None
+        self.tray_icon = None
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_countdown)
@@ -1563,7 +1564,8 @@ class ModernSalahApp(QMainWindow):
         self.restore_geometry()
         self.update_all_ui_text()
         self.load_prayer_times()
-        self.start_tray_indicator()
+        # Start tray indicator with delay to ensure main app is ready
+        QTimer.singleShot(2000, self.start_tray_indicator)
         
     def load_language_config(self):
         os.makedirs(self.config_dir, exist_ok=True)
@@ -1620,6 +1622,9 @@ class ModernSalahApp(QMainWindow):
                 if new_city != old_city:
                     self.prayer_times = {}
                     self.load_prayer_times()
+                if self.tray_icon:
+                    self.create_tray_menu()
+                    self.update_tray_tooltip()
         
     def init_ui(self):
         self.setWindowTitle('Salah Times')
@@ -2301,6 +2306,15 @@ class ModernSalahApp(QMainWindow):
         
         self.update_next_prayer()
         self.update_countdown()
+        
+        # Update tray tooltip if it exists
+        if self.tray_icon:
+            self.update_tray_tooltip()
+        
+        # Update tray if it exists
+        if self.tray_icon:
+            self.create_tray_menu()
+            self.update_tray_tooltip()
     
     def update_offline_indicator(self):
         if self.is_offline:
@@ -2457,6 +2471,146 @@ class ModernSalahApp(QMainWindow):
         
         return prayer_time <= current_time < prayer_time + iqama_delay
     
+    def _gtk_menu_item(self, label, callback=None, sensitive=True):
+        import gi
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import Gtk
+        item = Gtk.MenuItem(label=label)
+        item.set_sensitive(sensitive)
+        if callback:
+            item.connect('activate', lambda w: callback())
+        item.show()
+        return item
+
+    def create_tray_menu(self):
+        """Create Gtk menu for GNOME AppIndicator"""
+        import gi
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import Gtk
+
+        menu = Gtk.Menu()
+        city_name = self.tr_city(self.current_city)
+        menu.append(self._gtk_menu_item(f"Salah Times - {city_name}", sensitive=False))
+        menu.append(Gtk.SeparatorMenuItem.new())
+        menu.append(self._gtk_menu_item(self.get_translated_date(), sensitive=False))
+        menu.append(Gtk.SeparatorMenuItem.new())
+
+        if self.prayer_times:
+            icons = {'Fajr': '☽', 'Chorok': '☀', 'Dohr': '☉',
+                     'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
+            current_prayer = self.get_current_prayer()
+            for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+                if prayer == 'Chorok':
+                    t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
+                elif prayer in self.prayer_times:
+                    t = self.prayer_times[prayer]
+                else:
+                    continue
+                icon = icons.get(prayer, '🕐')
+                name = self.tr_prayer(prayer)
+                marker = ' ◄' if (prayer == current_prayer or (prayer == 'Chorok' and current_prayer == 'Sunrise')) else ''
+                menu.append(self._gtk_menu_item(f"{icon} {name}: {t}{marker}", sensitive=False))
+        else:
+            menu.append(self._gtk_menu_item("Loading prayer times...", sensitive=False))
+
+        menu.append(Gtk.SeparatorMenuItem.new())
+        next_prayer = self.get_next_prayer()
+        if next_prayer and self.prayer_times:
+            name = self.tr_prayer(next_prayer)
+            if next_prayer == 'Chorok':
+                t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
+            else:
+                t = self.prayer_times.get(next_prayer, '--:--')
+            countdown = self.get_countdown_to_next_prayer()
+            menu.append(self._gtk_menu_item(f"Next: {name} at {t}", sensitive=False))
+
+        menu.append(Gtk.SeparatorMenuItem.new())
+        menu.append(self._gtk_menu_item("Show Main Window", callback=self.show_and_raise))
+        menu.append(Gtk.SeparatorMenuItem.new())
+        menu.append(self._gtk_menu_item("Quit", callback=self.cleanup_and_quit))
+        menu.show_all()
+        self.tray_icon.set_menu(menu)
+    
+    def get_countdown_to_next_prayer(self):
+        """Get countdown to next prayer"""
+        if not self.prayer_times:
+            return "00:00:00"
+
+        now = datetime.now()
+        now_secs = now.hour * 3600 + now.minute * 60 + now.second
+
+        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+
+        for prayer in prayers:
+            if prayer == 'Chorok':
+                calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, now)
+                if calculated_chorok:
+                    prayer_secs = self.parse_time(calculated_chorok) * 60
+                else:
+                    continue
+            elif prayer in self.prayer_times:
+                prayer_secs = self.parse_time(self.prayer_times[prayer]) * 60
+            else:
+                continue
+
+            if prayer_secs > now_secs:
+                remaining = prayer_secs - now_secs
+                h = remaining // 3600
+                m = (remaining % 3600) // 60
+                s = remaining % 60
+                return f"{h:02d}:{m:02d}:{s:02d}"
+
+        if 'Fajr' in self.prayer_times:
+            fajr_secs = self.parse_time(self.prayer_times['Fajr']) * 60
+            remaining = 86400 - now_secs + fajr_secs
+            h = remaining // 3600
+            m = (remaining % 3600) // 60
+            s = remaining % 60
+            return f"{h:02d}:{m:02d}:{s:02d}"
+
+        return "00:00:00"
+    
+    def get_next_prayer(self):
+        """Get next prayer name"""
+        if not self.prayer_times:
+            return None
+        
+        now = datetime.now()
+        current_time = now.hour * 60 + now.minute
+        
+        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        
+        for prayer in prayers:
+            if prayer == 'Chorok':
+                today = datetime.now()
+                calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, today)
+                if calculated_chorok:
+                    prayer_time = self.parse_time(calculated_chorok)
+                else:
+                    continue
+            elif prayer in self.prayer_times:
+                prayer_time = self.parse_time(self.prayer_times[prayer])
+            else:
+                continue
+            
+            if prayer_time > current_time:
+                return prayer
+        
+        # If no prayer today, return Fajr for tomorrow
+        return 'Fajr'
+    
+    def update_tray_tooltip(self):
+        if not self.tray_icon:
+            return
+        next_prayer = self.get_next_prayer()
+        if next_prayer:
+            name = self.tr_prayer(next_prayer)
+            countdown = self.get_countdown_to_next_prayer()
+            label = f"{name} {countdown}"
+        else:
+            label = "--"
+        self.tray_icon.set_label(label, "")
+    
     def update_countdown(self):
         if not self.prayer_times:
             return
@@ -2552,22 +2706,56 @@ class ModernSalahApp(QMainWindow):
                         child.setStyleSheet("color: #ff4444;")
     
     def start_tray_indicator(self):
-        """Start the tray indicator if not already running"""
+        """Create AppIndicator tray icon (GNOME compatible)"""
         try:
-            # Check if tray indicator is already running
-            result = subprocess.run(['pgrep', '-f', 'salah_tray_indicator.py'], 
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                return  # Already running
-            
-            # Start tray indicator
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            tray_script = os.path.join(script_dir, 'salah_tray_indicator.py')
-            
-            if os.path.exists(tray_script):
-                self.tray_process = subprocess.Popen([sys.executable, tray_script])
+            if self.tray_icon is not None:
+                return
+
+            import gi
+            gi.require_version('AyatanaAppIndicator3', '0.1')
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import AyatanaAppIndicator3, Gtk
+            import threading
+
+            self.tray_icon = AyatanaAppIndicator3.Indicator.new(
+                "salah-times",
+                "appointment-soon",
+                AyatanaAppIndicator3.IndicatorCategory.APPLICATION_STATUS
+            )
+            self.tray_icon.set_status(AyatanaAppIndicator3.IndicatorStatus.ACTIVE)
+            self.tray_icon.set_label("--:--:--", "")
+
+            self.create_tray_menu()
+
+            self._gtk_thread = threading.Thread(target=Gtk.main, daemon=True)
+            self._gtk_thread.start()
+
+            self.tray_timer = QTimer()
+            self.tray_timer.timeout.connect(self.update_tray_display)
+            self.tray_timer.start(1000)
+
+            print("AppIndicator tray started")
         except Exception as e:
-            print(f"Could not start tray indicator: {e}")
+            print(f"Could not create AppIndicator tray: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_tray_display(self):
+        if not self.tray_icon:
+            return
+        self.update_tray_tooltip()
+        if not hasattr(self, '_menu_tick'):
+            self._menu_tick = 0
+        self._menu_tick += 1
+        if self._menu_tick >= 60:
+            self._menu_tick = 0
+            self.create_tray_menu()
+    
+    def show_and_raise(self):
+        """Show and raise the main window"""
+        self.show()
+        self.raise_()
+        self.activateWindow()
     
     def restore_geometry(self):
         """Restore window geometry from saved settings"""
@@ -2601,24 +2789,95 @@ class ModernSalahApp(QMainWindow):
         except Exception as e:
             print(f"Could not save main geometry: {e}")
     
-    def closeEvent(self, event):
-        """Handle window close - save geometry and don't close tray indicator"""
+    def tray_icon_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.show_and_raise()
+
+    def cleanup_and_quit(self):
+        print("Debug: Cleaning up and quitting...")
+        try:
+            import gi
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import Gtk
+            Gtk.main_quit()
+        except Exception:
+            pass
+        self.tray_icon = None
         self.save_geometry()
-        event.accept()  # Allow window to close, tray stays running
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        if self.tray_icon:
+            self.hide()
+            event.ignore()
+        else:
+            self.cleanup_and_quit()
+            event.accept()
 
 def main():
+    # Create application
     app = QApplication(sys.argv)
+    
+    # Single instance check using lock file
+    lock_file = os.path.join(os.path.expanduser('~'), '.salah_times', 'app.lock')
+    
+    try:
+        # Try to create lock file
+        os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+        
+        # Check if lock file exists and process is still running
+        if os.path.exists(lock_file):
+            try:
+                with open(lock_file, 'r') as f:
+                    pid = int(f.read().strip())
+                
+                # Check if process is still running
+                try:
+                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                    print("Another instance is already running")
+                    sys.exit(0)
+                except OSError:
+                    # Process doesn't exist, remove stale lock file
+                    os.remove(lock_file)
+            except (ValueError, IOError):
+                # Invalid lock file, remove it
+                try:
+                    os.remove(lock_file)
+                except:
+                    pass
+        
+        # Create new lock file with current PID
+        with open(lock_file, 'w') as f:
+            f.write(str(os.getpid()))
+        
+    except Exception as e:
+        print(f"Could not create lock file: {e}")
     
     # Set application properties
     app.setApplicationName("Salah Times")
-    app.setApplicationVersion("1.0")
+    app.setApplicationVersion("2.0")
     app.setOrganizationName("Islamic Apps")
     
     # Don't quit when last window is closed (tray should keep running)
     app.setQuitOnLastWindowClosed(False)
     
+    # Create single instance
     window = ModernSalahApp()
     window.show()
+    
+    # Handle application quit properly
+    def cleanup_on_quit():
+        try:
+            # Remove lock file
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+        except:
+            pass
+        
+        if hasattr(window, 'tray_icon') and window.tray_icon:
+            window.tray_icon.hide()
+    
+    app.aboutToQuit.connect(cleanup_on_quit)
     
     sys.exit(app.exec_())
 

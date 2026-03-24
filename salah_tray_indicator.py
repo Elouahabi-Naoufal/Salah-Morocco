@@ -86,17 +86,17 @@ class SalahTrayIndicator(QSystemTrayIcon):
         
         # Title with city name
         self.title_action = QAction("🕌 Salah Times - Loading...", self)
-        self.title_action.triggered.connect(lambda: None)
+        self.title_action.setEnabled(False)
         font = self.title_action.font()
         font.setBold(True)
         self.title_action.setFont(font)
         self.menu.addAction(self.title_action)
-        
+
         self.menu.addSeparator()
-        
+
         # Date info
         self.date_action = QAction("📅 Loading date...", self)
-        self.date_action.triggered.connect(lambda: None)
+        self.date_action.setEnabled(False)
         self.menu.addAction(self.date_action)
         
         self.menu.addSeparator()
@@ -107,27 +107,27 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Next prayer countdown
         self.menu.addSeparator()
         self.next_prayer_label = QAction("--- NEXT PRAYER ---", self)
-        self.next_prayer_label.triggered.connect(lambda: None)
+        self.next_prayer_label.setEnabled(False)
         font = self.next_prayer_label.font()
         font.setBold(True)
         font.setPointSize(font.pointSize() - 1)
         self.next_prayer_label.setFont(font)
         self.menu.addAction(self.next_prayer_label)
-        
+
         self.next_prayer_action = QAction("Loading...", self)
-        self.next_prayer_action.triggered.connect(lambda: None)
+        self.next_prayer_action.setEnabled(False)
         font = self.next_prayer_action.font()
         font.setBold(True)
         self.next_prayer_action.setFont(font)
         self.menu.addAction(self.next_prayer_action)
-        
+
         self.countdown_action = QAction("⏰ 00:00:00 ⏰", self)
-        self.countdown_action.triggered.connect(lambda: None)
+        self.countdown_action.setEnabled(False)
         self.menu.addAction(self.countdown_action)
-        
+
         # Iqama countdown
         self.iqama_action = QAction("", self)
-        self.iqama_action.triggered.connect(lambda: None)
+        self.iqama_action.setEnabled(False)
         self.menu.addAction(self.iqama_action)
         
         self.menu.addSeparator()
@@ -169,7 +169,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 color: white;
             }
             QMenu::item:disabled {
-                color: white;
+                color: #aaaaaa;
                 background-color: transparent;
             }
             QMenu::separator {
@@ -187,47 +187,48 @@ class SalahTrayIndicator(QSystemTrayIcon):
         # Set tooltip
         self.update_tooltip()
     
-    def create_icon(self):
-        # Create a simple mosque icon
-        pixmap = QPixmap(32, 32)
+    def create_icon(self, countdown_text=None):
+        pixmap = QPixmap(64, 64)
         pixmap.fill(Qt.transparent)
-        
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Draw mosque silhouette
-        painter.setPen(QPen(QColor(45, 90, 39), 2))
-        painter.setBrush(QBrush(QColor(45, 90, 39)))
-        
-        # Main dome
-        painter.drawEllipse(8, 8, 16, 12)
-        
-        # Minaret
-        painter.drawRect(4, 12, 4, 16)
-        painter.drawRect(24, 12, 4, 16)
-        
-        # Base
-        painter.drawRect(6, 20, 20, 8)
-        
+
+        # Background circle
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(30, 80, 30)))
+        painter.drawEllipse(0, 0, 64, 64)
+
+        if countdown_text:
+            # Show countdown HH:MM or MM:SS
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            font = QFont("Monospace", 13, QFont.Bold)
+            painter.setFont(font)
+            painter.drawText(QRect(0, 0, 64, 64), Qt.AlignCenter, countdown_text)
+        else:
+            # Mosque silhouette
+            painter.setPen(QPen(QColor(255, 255, 255), 2))
+            painter.setBrush(QBrush(QColor(255, 255, 255)))
+            painter.drawEllipse(16, 14, 32, 20)
+            painter.drawRect(8, 24, 8, 28)
+            painter.drawRect(48, 24, 8, 28)
+            painter.drawRect(12, 36, 40, 16)
+
         painter.end()
-        
         return QIcon(pixmap)
     
     def setup_timer(self):
-        # Timer for checking prayer times and notifications
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_notifications)
-        self.timer.start(60000)  # Check every minute (less frequent)
-        
-        # Timer for updating tooltip and menu
+        self.timer.start(60000)
+
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
-        self.update_timer.start(1000)  # Update every second for live countdown
+        self.update_timer.start(1000)
         
-        # Timer to reload cache periodically
         self.cache_timer = QTimer()
         self.cache_timer.timeout.connect(self.load_prayer_times)
-        self.cache_timer.start(300000)  # Check cache every 5 minutes
+        self.cache_timer.start(300000)
     
     def setup_config_watcher(self):
         # Timer to check for config file changes
@@ -427,6 +428,18 @@ class SalahTrayIndicator(QSystemTrayIcon):
     def update_display(self):
         self.update_tooltip()
         self.update_countdown_display()
+        self.update_tray_icon()
+
+    def update_tray_icon(self):
+        next_prayer = self.get_next_prayer()
+        if next_prayer and self.prayer_times:
+            countdown = self.get_live_countdown_to_prayer(next_prayer)
+            # Show HH:MM in icon (fits better)
+            parts = countdown.split(':')
+            icon_text = f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else countdown
+            self.setIcon(self.create_icon(icon_text))
+        else:
+            self.setIcon(self.create_icon())
     
     def update_countdown_display(self):
         if not self.prayer_times:
@@ -635,8 +648,18 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 print('\a')
     
     def on_prayer_clicked(self, prayer):
-        """Handle prayer time click - currently does nothing but is clickable"""
-        pass
+        if prayer not in self.prayer_times:
+            return
+        prayer_time = self.prayer_times[prayer]
+        iqama_time = self.get_iqama_time(prayer)
+        prayer_name = self.tr_prayer(prayer)
+        QApplication.clipboard().setText(prayer_time)
+        self.showMessage(
+            f"{prayer_name} - {prayer_time}",
+            f"Iqama at {iqama_time}  |  Time copied to clipboard",
+            QSystemTrayIcon.Information,
+            3000
+        )
     
     def show_main_app(self):
         try:
@@ -713,29 +736,20 @@ class SalahTrayIndicator(QSystemTrayIcon):
     def get_live_countdown_to_prayer(self, prayer):
         if not prayer or prayer not in self.prayer_times:
             return "00:00:00"
-        
+
         now = datetime.now()
-        current_time = now.hour * 60 + now.minute
-        current_seconds = now.second
-        prayer_time = self.parse_time(self.prayer_times[prayer])
-        
-        if prayer_time > current_time:
-            remaining = prayer_time - current_time
-        else:
-            # Tomorrow's prayer - calculate time until tomorrow's prayer
-            minutes_until_midnight = (24 * 60) - current_time
-            remaining = minutes_until_midnight + prayer_time
-        
-        hours = remaining // 60
-        minutes = remaining % 60
-        seconds = 60 - current_seconds if current_seconds > 0 else 0
-        
-        if seconds == 60:
-            seconds = 0
-        elif seconds > 0 and minutes > 0:
-            minutes -= 1
-        
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        now_seconds = now.hour * 3600 + now.minute * 60 + now.second
+        prayer_minutes = self.parse_time(self.prayer_times[prayer])
+        prayer_seconds = prayer_minutes * 60
+
+        remaining = prayer_seconds - now_seconds
+        if remaining <= 0:
+            remaining += 24 * 3600  # tomorrow
+
+        h = remaining // 3600
+        m = (remaining % 3600) // 60
+        s = remaining % 60
+        return f"{h:02d}:{m:02d}:{s:02d}"
     
     def get_iqama_countdown(self, prayer):
         if not prayer or prayer not in self.prayer_times:
@@ -760,29 +774,20 @@ class SalahTrayIndicator(QSystemTrayIcon):
     def get_live_iqama_countdown(self, prayer):
         if not prayer or prayer not in self.prayer_times:
             return "00:00:00"
-        
+
         now = datetime.now()
-        current_time = now.hour * 60 + now.minute
-        current_seconds = now.second
-        prayer_time = self.parse_time(self.prayer_times[prayer])
-        iqama_delay = self.get_iqama_delay(prayer)
-        iqama_end_time = prayer_time + iqama_delay
-        
-        remaining = iqama_end_time - current_time
-        
+        now_seconds = now.hour * 3600 + now.minute * 60 + now.second
+        prayer_minutes = self.parse_time(self.prayer_times[prayer])
+        iqama_seconds = (prayer_minutes + self.get_iqama_delay(prayer)) * 60
+
+        remaining = iqama_seconds - now_seconds
         if remaining <= 0:
             return "00:00:00"
-        
-        hours = remaining // 60
-        minutes = remaining % 60
-        seconds = 60 - current_seconds if current_seconds > 0 else 0
-        
-        if seconds == 60:
-            seconds = 0
-        elif seconds > 0 and minutes > 0:
-            minutes -= 1
-        
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        h = remaining // 3600
+        m = (remaining % 3600) // 60
+        s = remaining % 60
+        return f"{h:02d}:{m:02d}:{s:02d}"
     
     def is_iqama_time(self, prayer):
         if not prayer or prayer not in self.prayer_times:
