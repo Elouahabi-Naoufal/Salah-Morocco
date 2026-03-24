@@ -2490,9 +2490,7 @@ class ModernSalahApp(QMainWindow):
 
         menu = Gtk.Menu()
         city_name = self.tr_city(self.current_city)
-        menu.append(self._gtk_menu_item(f"Salah Times - {city_name}", sensitive=False))
-        menu.append(Gtk.SeparatorMenuItem.new())
-        menu.append(self._gtk_menu_item(self.get_translated_date(), sensitive=False))
+        menu.append(self._gtk_menu_item(f"🕌 Salah Times - {city_name}", callback=self.show_and_raise))
         menu.append(Gtk.SeparatorMenuItem.new())
 
         if self.prayer_times:
@@ -2509,9 +2507,9 @@ class ModernSalahApp(QMainWindow):
                 icon = icons.get(prayer, '🕐')
                 name = self.tr_prayer(prayer)
                 marker = ' ◄' if (prayer == current_prayer or (prayer == 'Chorok' and current_prayer == 'Sunrise')) else ''
-                menu.append(self._gtk_menu_item(f"{icon} {name}: {t}{marker}", sensitive=False))
+                menu.append(self._gtk_menu_item(f"{icon} {name}: {t}{marker}", callback=self.show_and_raise))
         else:
-            menu.append(self._gtk_menu_item("Loading prayer times...", sensitive=False))
+            menu.append(self._gtk_menu_item("🔄 Loading prayer times...", sensitive=False))
 
         menu.append(Gtk.SeparatorMenuItem.new())
         next_prayer = self.get_next_prayer()
@@ -2521,13 +2519,14 @@ class ModernSalahApp(QMainWindow):
                 t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
             else:
                 t = self.prayer_times.get(next_prayer, '--:--')
-            countdown = self.get_countdown_to_next_prayer()
-            menu.append(self._gtk_menu_item(f"Next: {name} at {t}", sensitive=False))
+            menu.append(self._gtk_menu_item(f"⏰ {self.tr('next_prayer')}: {name} {t}", callback=self.show_and_raise))
 
+        menu.append(self._gtk_menu_item(f"📅 {self.get_translated_date()}", callback=self.show_and_raise))
         menu.append(Gtk.SeparatorMenuItem.new())
-        menu.append(self._gtk_menu_item("Show Main Window", callback=self.show_and_raise))
+        menu.append(self._gtk_menu_item("🪟 Show Main Window", callback=self.show_and_raise))
+        menu.append(self._gtk_menu_item("↻ Refresh Prayer Times", callback=self.load_prayer_times))
         menu.append(Gtk.SeparatorMenuItem.new())
-        menu.append(self._gtk_menu_item("Quit", callback=self.cleanup_and_quit))
+        menu.append(self._gtk_menu_item("❌ Quit", callback=self.cleanup_and_quit))
         menu.show_all()
         self.tray_icon.set_menu(menu)
     
@@ -2605,8 +2604,12 @@ class ModernSalahApp(QMainWindow):
         next_prayer = self.get_next_prayer()
         if next_prayer:
             name = self.tr_prayer(next_prayer)
+            if next_prayer == 'Chorok':
+                t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
+            else:
+                t = self.prayer_times.get(next_prayer, '--:--')
             countdown = self.get_countdown_to_next_prayer()
-            label = f"{name} {countdown}"
+            label = f"{name} {t} {countdown}"
         else:
             label = "--"
         self.tray_icon.set_label(label, "")

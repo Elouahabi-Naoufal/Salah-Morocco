@@ -14,7 +14,7 @@ source venv_appimage/bin/activate
 # Install dependencies
 echo "📥 Installing dependencies..."
 pip install --upgrade pip
-pip install PyQt5 requests beautifulsoup4 pyinstaller
+pip install PyQt5 requests beautifulsoup4 pyinstaller PyGObject pycairo
 
 # Create PyInstaller spec file
 echo "📝 Creating PyInstaller spec..."
@@ -28,7 +28,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('display_features_fixed.py', '.')],
-    hiddenimports=['PyQt5.QtPrintSupport'],
+    hiddenimports=['PyQt5.QtPrintSupport', 'gi', 'gi.repository.AyatanaAppIndicator3', 'gi.repository.Gtk', 'gi.repository.GLib', 'gi.repository.GObject'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -88,6 +88,24 @@ echo "📁 Creating AppDir structure..."
 mkdir -p SalahTimes.AppDir/usr/bin
 mkdir -p SalahTimes.AppDir/usr/share/applications
 mkdir -p SalahTimes.AppDir/usr/share/icons/hicolor/256x256/apps
+mkdir -p SalahTimes.AppDir/usr/lib/girepository-1.0
+mkdir -p SalahTimes.AppDir/usr/lib
+
+# Bundle GObject typelibs
+echo "📦 Bundling GObject typelibs..."
+for typelib in AyatanaAppIndicator3-0.1 Gtk-3.0 GLib-2.0 GObject-2.0 Gio-2.0 GLibUnix-2.0; do
+    src="/usr/lib/girepository-1.0/${typelib}.typelib"
+    if [ -f "$src" ]; then
+        cp "$src" SalahTimes.AppDir/usr/lib/girepository-1.0/
+        echo "  ✓ $typelib"
+    else
+        echo "  ⚠ Missing: $typelib"
+    fi
+done
+
+# Bundle libayatana-appindicator3
+echo "📦 Bundling libayatana-appindicator3..."
+cp -P /usr/lib/libayatana-appindicator3.so* SalahTimes.AppDir/usr/lib/ 2>/dev/null && echo "  ✓ libayatana-appindicator3" || echo "  ⚠ libayatana-appindicator3 not found"
 
 # Copy executable
 cp dist/SalahTimes SalahTimes.AppDir/usr/bin/
@@ -117,6 +135,7 @@ cat > SalahTimes.AppDir/AppRun << 'EOF'
 HERE="$(dirname "$(readlink -f "${0}")")"
 export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+export GI_TYPELIB_PATH="${HERE}/usr/lib/girepository-1.0:/usr/lib/girepository-1.0:/usr/lib/x86_64-linux-gnu/girepository-1.0"
 exec "${HERE}/usr/bin/SalahTimes" "$@"
 EOF
 chmod +x SalahTimes.AppDir/AppRun
