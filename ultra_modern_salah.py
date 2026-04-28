@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import requests
+import sqlite3
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
@@ -10,7 +11,6 @@ import threading
 import json
 import os
 import subprocess
-import math
 import signal
 
 # Import display features
@@ -49,13 +49,20 @@ TRANSLATIONS = {
         'settings': 'Settings',
         'monthly_calendar': 'Monthly Calendar',
         'weekly_schedule': 'Weekly Schedule',
+        'refresh_db': '🗄️ Refresh DB',
+        'refresh_db_updating': '⏳ Updating...',
+        'refresh_db_prompt_title': 'Update Prayer Times',
+        'refresh_db_prompt_msg': '30 days have passed since the last database update.\nRefresh all prayer times now?',
         'timezone_view': 'Multiple Timezones',
         'view': 'View',
+        'tray_show': '🪟 Show Main Window',
+        'tray_refresh': '↻ Refresh Prayer Times',
+        'tray_quit': '❌ Quit',
+        'no_internet_title': 'No Internet Connection',
+        'no_internet_msg': 'Cannot update without an internet connection.\n\nCurrent database:\n• {} cities\n• From: {}\n• Until: {}',
         'prayers': {
             'Date': 'Date',
             'Fajr': 'Fajr',
-            'Sunrise': 'Sunrise',
-            'Chorok': 'Sunrise',
             'Dohr': 'Dhuhr',
             'Asr': 'Asr',
             'Maghreb': 'Maghrib',
@@ -87,13 +94,20 @@ TRANSLATIONS = {
         'settings': 'الإعدادات',
         'monthly_calendar': 'التقويم الشهري',
         'weekly_schedule': 'الجدول الأسبوعي',
+        'refresh_db': '🗄️ تحديث قاعدة البيانات',
+        'refresh_db_updating': '⏳ جاري التحديث...',
+        'refresh_db_prompt_title': 'تحديث مواقيت الصلاة',
+        'refresh_db_prompt_msg': 'مرّ 30 يوماً منذ آخر تحديث لقاعدة البيانات.\nهل تريد تحديث مواقيت الصلاة الآن؟',
         'timezone_view': 'مناطق زمنية متعددة',
         'view': 'عرض',
+        'tray_show': '🪟 عرض النافذة الرئيسية',
+        'tray_refresh': '↻ تحديث مواقيت الصلاة',
+        'tray_quit': '❌ خروج',
+        'no_internet_title': 'لا يوجد اتصال بالإنترنت',
+        'no_internet_msg': 'لا يمكن التحديث بدون اتصال بالإنترنت.\n\nقاعدة البيانات الحالية:\n• {} مدينة\n• من: {}\n• حتى: {}',
         'prayers': {
             'Date': 'التاريخ',
             'Fajr': 'الفجر',
-            'Sunrise': 'الشروق',
-            'Chorok': 'الشروق',
             'Dohr': 'الظهر',
             'Asr': 'العصر',
             'Maghreb': 'المغرب',
@@ -125,13 +139,20 @@ TRANSLATIONS = {
         'settings': 'Parametres',
         'monthly_calendar': 'Calendrier Mensuel',
         'weekly_schedule': 'Horaire Hebdomadaire',
+        'refresh_db': '🗄️ Actualiser BD',
+        'refresh_db_updating': '⏳ Mise a jour...',
+        'refresh_db_prompt_title': 'Mise a jour des horaires',
+        'refresh_db_prompt_msg': '30 jours se sont ecoules depuis la derniere mise a jour.\nActualiser les horaires de priere maintenant?',
         'timezone_view': 'Fuseaux Horaires Multiples',
         'view': 'Affichage',
+        'tray_show': '🪟 Afficher la fenetre',
+        'tray_refresh': '↻ Actualiser les horaires',
+        'tray_quit': '❌ Quitter',
+        'no_internet_title': 'Pas de connexion Internet',
+        'no_internet_msg': 'Impossible de mettre a jour sans connexion.\n\nBase de donnees actuelle:\n• {} villes\n• Du: {}\n• Au: {}',
         'prayers': {
             'Date': 'Date',
             'Fajr': 'Fajr',
-            'Sunrise': 'Lever du soleil',
-            'Chorok': 'Lever du soleil',
             'Dohr': 'Dhuhr',
             'Asr': 'Asr',
             'Maghreb': 'Maghrib',
@@ -139,6 +160,26 @@ TRANSLATIONS = {
         }
     }
 }
+
+CITY_SLUGS = {
+    'Agadir': 'agadir', 'Al Hoceima': 'al-hoceima', 'Assila': 'assila',
+    'Beni Mellal': 'beni-mellal', 'Berkane': 'berkane', 'Boulemane': 'boulemane',
+    'Casablanca': 'casablanca', 'Chefchaouen': 'chefchaouen', 'Dakhla': 'dakhla',
+    'El Jadida': 'el-jadida', 'Errachidia': 'errachidia', 'Essaouira': 'essaouira',
+    'Fes': 'fes', 'Ifrane': 'ifrane', 'Kalaat Sraghna': 'kalaat-sraghna',
+    'Kenitra': 'kenitra', 'Khenifra': 'khenifra', 'Khouribga': 'khouribga',
+    'Ksar Lekbir': 'ksar-lekbir', 'Laayoune': 'laayoune', 'Lagouira': 'lagouira',
+    'Larache': 'larache', 'Marrakech': 'marrakech', 'Meknes': 'meknes',
+    'Mohammedia': 'mohammedia', 'Moulay Idriss Zerhoun': 'moulay-idriss-zerhoun',
+    'Nador': 'nador', 'Ouazzane': 'ouazzane', 'Oujda': 'oujda', 'Rabat': 'rabat',
+    'Safi': 'safi', 'Sefrou': 'sefrou', 'Settat': 'settat', 'Sidi Kacem': 'sidi-kacem',
+    'Smara': 'smara', 'Tan Tan': 'tan-tan', 'Tangier': 'tanger', 'Taounate': 'taounate',
+    'Taroudant': 'taroudant', 'Taza': 'taza', 'Tetouan': 'tetouan', 'Tiznit': 'tiznit',
+    'Zagora': 'zagora',
+}
+
+BASE_URL = 'https://www.yabiladi.com/prieres/details/{}/{}.html'
+SCRAPER_HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
 
 CITIES = {
     'Tangier': {'id': 101, 'en': 'Tangier', 'ar': 'طنجة', 'fr': 'Tanger', 'lat': 35.7595, 'lon': -5.8340},
@@ -1223,212 +1264,99 @@ class CitySelectionDialog(QDialog):
             return self.get_city_key_from_translated(translated_name)
         return 'Tangier'
 
-class OfflineSunriseCalculator:
-    @staticmethod
-    def calculate_sunrise(city_name, date):
-        """Calculate sunrise time offline using astronomical formulas"""
-        try:
-            if city_name not in CITIES or 'lat' not in CITIES[city_name]:
-                print(f"Debug: City {city_name} not found or no coordinates")
-                return None
-            
-            lat = CITIES[city_name]['lat']
-            lon = CITIES[city_name]['lon']
-            print(f"Debug: Calculating for {city_name} at {lat}, {lon}")
-            
-            # Get day of year
-            day_of_year = date.timetuple().tm_yday
-            print(f"Debug: Day of year: {day_of_year}")
-            
-            # Calculate solar declination (δ)
-            declination = 23.44 * math.sin(math.radians(360 * (284 + day_of_year) / 365))
-            print(f"Debug: Declination: {declination}")
-            
-            # Convert latitude to radians
-            lat_rad = math.radians(lat)
-            decl_rad = math.radians(declination)
-            
-            # Calculate hour angle (ω) for sunrise
-            cos_hour_angle = -math.tan(lat_rad) * math.tan(decl_rad)
-            print(f"Debug: cos_hour_angle: {cos_hour_angle}")
-            
-            # Check if sun rises (polar regions might not have sunrise/sunset)
-            if cos_hour_angle < -1 or cos_hour_angle > 1:
-                print(f"Debug: No sunrise/sunset for this location and date")
-                return None
-                
-            hour_angle = math.degrees(math.acos(cos_hour_angle))
-            print(f"Debug: Hour angle: {hour_angle}")
-            
-            # Morocco timezone offset (UTC+1, no DST)
-            timezone_offset = 1
-            
-            # Compute solar noon
-            solar_noon = 12 - (lon / 15 - timezone_offset)
-            print(f"Debug: Solar noon: {solar_noon}")
-            
-            # Compute sunrise time
-            sunrise_time = solar_noon - (hour_angle / 15)
-            print(f"Debug: Sunrise time (decimal): {sunrise_time}")
-            
-            # Convert to hours and minutes
-            hours = int(sunrise_time)
-            minutes = int((sunrise_time - hours) * 60)
-            
-            # Handle negative hours (previous day)
-            if hours < 0:
-                hours += 24
-            
-            # Ensure valid time format
-            hours = hours % 24
-            minutes = max(0, min(59, minutes))
-            
-            result = f"{hours:02d}:{minutes:02d}"
-            result = f"{hours:02d}:{minutes:02d}"
-            print(f"Debug: Final sunrise time: {result}")
-            return result
-            
-        except Exception as e:
-            print(f"Debug: Error in calculation: {e}")
-            return None
-    
-    @staticmethod
-    def calculate_all_prayer_times(city_name, date):
-        """Calculate all prayer times for a city and date"""
-        sunrise = OfflineSunriseCalculator.calculate_sunrise(city_name, date)
-        if not sunrise:
-            return None
-        
-        # For now, return sunrise as Chorok
-        # This can be extended to calculate other prayer times
-        return {
-            'Date': date.strftime('%d/%m'),
-            'Sunrise': sunrise,
-            # Other prayers would be calculated here
-            # For now, we'll still use web scraping for full prayer times
-        }
-
 class PrayerTimeWorker(QThread):
     data_received = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
     offline_data_loaded = pyqtSignal(dict, int)  # prayer_times, days_remaining
     
+    db_refresh_needed = pyqtSignal()  # emitted when counter hits 30
+
     def __init__(self, city_id=101, city_name="Tangier"):
         super().__init__()
         self.city_id = city_id
         self.city_name = city_name
-        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
-        self.storage_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
+        self.db_path = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
     
     def run(self):
-        # Always load cached data first (fast)
         self.load_cached_data_immediately()
-        
-        # Check if we need to update in background
         if self.should_update_data():
             self.update_data_in_background()
+        elif self.get_day_counter() >= 30:
+            self.db_refresh_needed.emit()
     
-    def load_cached_data_immediately(self):
-        """Load cached data instantly without waiting"""
-        today = datetime.now().strftime('%d/%m')
-        offline_data = self.load_offline_data()
-        
-        if offline_data and today in offline_data['prayer_times']:
-            self.data_received.emit(offline_data['prayer_times'][today])
-        else:
-            # No cached data, force update
-            self.force_update_data()
+    def get_counter_file(self):
+        return os.path.join(os.path.expanduser('~'), '.salah_times', 'config', 'day_counter.json')
     
-    def should_update_data(self):
-        """Check if data needs updating based on last scrape time"""
+    def get_day_counter(self):
+        """Return current day count since last full DB refresh."""
+        try:
+            with open(self.get_counter_file(), 'r') as f:
+                data = json.load(f)
+            last = datetime.fromisoformat(data['last_checked'])
+            # Increment if a new day has passed
+            if datetime.now().date() > last.date():
+                count = data.get('count', 0) + 1
+                self.save_day_counter(count)
+                return count
+            return data.get('count', 0)
+        except:
+            self.save_day_counter(0)
+            return 0
+    
+    def save_day_counter(self, count):
         try:
             config_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
-            update_file = os.path.join(config_folder, 'last_update.json')
-            if not os.path.exists(update_file):
-                return True
-            
-            with open(update_file, 'r') as f:
-                update_info = json.load(f)
-            
-            last_update = datetime.fromisoformat(update_info['last_update'])
-            now = datetime.now()
-            
-            # Update if more than 1 day old
-            return (now - last_update).days >= 1
-        except:
-            return True
+            os.makedirs(config_folder, exist_ok=True)
+            with open(self.get_counter_file(), 'w') as f:
+                json.dump({'count': count, 'last_checked': datetime.now().isoformat()}, f)
+        except Exception as e:
+            print(f"Could not save day counter: {e}")
     
+    def reset_day_counter(self):
+        self.save_day_counter(0)
+    
+    def should_update_data(self):
+        """True only if no DB exists yet (first run)."""
+        return not os.path.exists(self.db_path)
+    
+    def save_update_timestamp(self):
+        self.reset_day_counter()
+
+    def load_cached_data_immediately(self):
+        today = datetime.now().strftime('%d/%m')
+        row = self.load_offline_data(today)
+        if row:
+            self.data_received.emit(row)
+        else:
+            self.force_update_data()
+
     def update_data_in_background(self):
-        """Update data in background without blocking UI"""
         if self.check_internet_connection():
             try:
                 self.update_all_cities_data()
                 self.save_update_timestamp()
             except Exception as e:
                 print(f"Background update failed: {e}")
-    
+
     def force_update_data(self):
-        """Force update when no cached data exists"""
         if self.check_internet_connection():
             try:
                 self.update_all_cities_data()
                 self.save_update_timestamp()
-                
-                # Load today's data
                 today = datetime.now().strftime('%d/%m')
-                offline_data = self.load_offline_data()
-                if offline_data and today in offline_data['prayer_times']:
-                    self.data_received.emit(offline_data['prayer_times'][today])
+                row = self.load_offline_data(today)
+                if row:
+                    self.data_received.emit(row)
                 else:
                     self.error_occurred.emit("No prayer times found for today")
             except Exception as e:
-                # Fallback to offline calculation
                 self.try_offline_calculation()
         else:
-            # No internet: try offline calculation
             self.try_offline_calculation()
-    
+
     def try_offline_calculation(self):
-        """Try to calculate prayer times offline"""
-        try:
-            today = datetime.now()
-            calculated_times = OfflineSunriseCalculator.calculate_all_prayer_times(self.city_name, today)
-            
-            if calculated_times:
-                # For now, we only have sunrise calculation
-                # Show partial data with calculated sunrise
-                partial_times = {
-                    'Date': today.strftime('%d/%m'),
-                    'Fajr': '--:--',
-                    'Sunrise': calculated_times['Sunrise'],
-                    'Dohr': '--:--',
-                    'Asr': '--:--',
-                    'Maghreb': '--:--',
-                    'Isha': '--:--'
-                }
-                self.offline_data_loaded.emit(partial_times, 0)
-            else:
-                self.error_occurred.emit("No internet connection and calculation failed")
-        except Exception as e:
-            self.error_occurred.emit(f"Offline calculation error: {str(e)}")
-    
-    def save_update_timestamp(self):
-        """Save when we last updated the data"""
-        try:
-            config_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
-            os.makedirs(config_folder, exist_ok=True)
-            update_file = os.path.join(config_folder, 'last_update.json')
-            
-            update_info = {
-                'last_update': datetime.now().isoformat(),
-                'cities_updated': len(CITIES)
-            }
-            
-            with open(update_file, 'w') as f:
-                json.dump(update_info, f, indent=2)
-        except Exception as e:
-            print(f"Could not save update timestamp: {e}")
-    
+        self.error_occurred.emit("No internet connection and no offline data available")
+
     def get_city_coordinates(self):
         """Get coordinates for current city"""
         city_data = CITIES.get(self.city_name, {})
@@ -1442,98 +1370,107 @@ class PrayerTimeWorker(QThread):
             return False
     
     def update_all_cities_data(self):
-        """Update prayer times for all cities"""
-        os.makedirs(self.data_folder, exist_ok=True)
-        
+        """Update prayer times for all cities using scraper-style fetch"""
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
         for city_name, city_data in CITIES.items():
+            slug = CITY_SLUGS.get(city_name)
+            if not slug:
+                continue
+            city_id = city_data['id']
+            table = slug.replace('-', '_')
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table} (
+                    date TEXT PRIMARY KEY, fajr TEXT, dohr TEXT,
+                    asr TEXT, maghreb TEXT, isha TEXT
+                )
+            """)
             try:
-                city_id = city_data['id']
-                url = f'https://www.yabiladi.com/prieres/details/{city_id}/city.html'
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                
-                soup = BeautifulSoup(response.text, 'html.parser')
-                prayer_table = soup.find('table')
-                
-                if prayer_table:
-                    headers = [header.text.strip() for header in prayer_table.find_all('th')]
-                    rows = prayer_table.find_all('tr')[1:]
-                    
-                    all_prayer_times = {}
-                    for row in rows:
-                        columns = row.find_all('td')
-                        if columns:
-                            date = columns[0].text.strip()
-                            prayer_data = {}
-                            for header, col in zip(headers, columns):
-                                prayer_data[header] = col.text.strip()
-                            all_prayer_times[date] = prayer_data
-                    
-                    # Save city data to cities subfolder
-                    city_file = os.path.join(self.data_folder, f'{city_name.lower()}.json')
-                    city_data_obj = {
-                        'city': city_name,
-                        'last_updated': datetime.now().isoformat(),
-                        'prayer_times': all_prayer_times
-                    }
-                    
-                    with open(city_file, 'w', encoding='utf-8') as f:
-                        json.dump(city_data_obj, f, ensure_ascii=False, indent=2)
-                        
+                url = BASE_URL.format(city_id, slug)
+                resp = requests.get(url, headers=SCRAPER_HEADERS, timeout=10)
+                resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                prayer_table = soup.find('table', class_='prayer')
+                if not prayer_table:
+                    print(f'SKIP {city_name} - table not found')
+                    continue
+                rows = []
+                for tr in prayer_table.find_all('tr')[1:]:
+                    cells = [td.get_text(strip=True) for td in tr.find_all('td')]
+                    if cells and len(cells) >= 6:
+                        rows.append(cells[:6])
+                cursor.execute(f'DELETE FROM {table}')
+                cursor.executemany(
+                    f'INSERT INTO {table} (date, fajr, dohr, asr, maghreb, isha) VALUES (?, ?, ?, ?, ?, ?)',
+                    rows
+                )
+                conn.commit()
+                print(f'OK  {city_name:30s} -> {len(rows)} rows')
             except Exception as e:
                 print(f"Error updating {city_name}: {e}")
                 continue
+
+        conn.close()
     
     def load_offline_mode(self, error_msg):
         """Load offline data or show error"""
-        if not os.path.exists(self.data_folder):
-            self.error_occurred.emit("No internet connection and no offline data available")
-            return
-            
-        offline_data = self.load_offline_data()
-        if offline_data:
-            today = datetime.now().strftime('%d/%m')
-            if today in offline_data['prayer_times']:
-                days_remaining = self.calculate_days_remaining(offline_data['prayer_times'])
-                self.offline_data_loaded.emit(offline_data['prayer_times'][today], days_remaining)
-            else:
-                self.error_occurred.emit(f"Offline mode: No data for today")
+        today = datetime.now().strftime('%d/%m')
+        row = self.load_offline_data(today)
+        if row:
+            days_remaining = self.calculate_days_remaining()
+            self.offline_data_loaded.emit(row, days_remaining)
         else:
             self.error_occurred.emit("No internet connection and no offline data available")
-    
 
-    
-    def load_offline_data(self):
+    def load_offline_data(self, date=None):
+        """Load prayer times for a specific date from SQLite"""
         try:
-            if os.path.exists(self.storage_file):
-                with open(self.storage_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+            if not os.path.exists(self.db_path):
+                return None
+            slug = CITY_SLUGS.get(self.city_name)
+            if not slug:
+                return None
+            table = slug.replace('-', '_')
+            if date is None:
+                date = datetime.now().strftime('%d/%m')
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(f'SELECT date, fajr, dohr, asr, maghreb, isha FROM {table} WHERE date = ?', (date,))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                return {'Date': row[0], 'Fajr': row[1], 'Dohr': row[2],
+                        'Asr': row[3], 'Maghreb': row[4], 'Isha': row[5]}
         except Exception as e:
             print(f"Error loading offline data: {e}")
         return None
     
-    def calculate_days_remaining(self, prayer_times):
+    def calculate_days_remaining(self):
         try:
+            slug = CITY_SLUGS.get(self.city_name)
+            if not slug or not os.path.exists(self.db_path):
+                return 0
+            table = slug.replace('-', '_')
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(f'SELECT date FROM {table}')
+            dates = [r[0] for r in cursor.fetchall()]
+            conn.close()
             today = datetime.now()
-            dates = list(prayer_times.keys())
-            
-            # Convert dates to datetime objects for comparison
             date_objects = []
             for date_str in dates:
                 try:
                     day, month = map(int, date_str.split('/'))
                     year = today.year
-                    # Handle year transition
                     if month < today.month or (month == today.month and day < today.day):
                         year += 1
                     date_objects.append(datetime(year, month, day))
                 except:
                     continue
-            
             if date_objects:
-                last_date = max(date_objects)
-                days_remaining = (last_date - today).days + 1
-                return max(0, days_remaining)
+                return max(0, (max(date_objects) - today).days + 1)
         except:
             pass
         return 0
@@ -1704,6 +1641,16 @@ class ModernSalahApp(QMainWindow):
                 margin: 5px;
             }
             
+            .prayer_row {
+                background: transparent;
+                border-radius: 8px;
+            }
+            
+            .prayer_row:hover {
+                background: rgba(45, 90, 39, 0.06);
+                border-radius: 8px;
+            }
+            
             .prayer_card QLabel {
                 color: #2c3e50;
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -1724,12 +1671,12 @@ class ModernSalahApp(QMainWindow):
             }
             
             .prayer_name {
-                font-size: 16px;
+                font-size: 22px;
                 font-weight: 600;
             }
             
             .prayer_time {
-                font-size: 18px;
+                font-size: 22px;
                 font-weight: bold;
             }
             
@@ -1905,63 +1852,57 @@ class ModernSalahApp(QMainWindow):
     
     def create_prayer_grid(self):
         container = QWidget()
+        container.setProperty("class", "prayer_card")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Create grid layout
-        grid = QGridLayout(container)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(10)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(0)
         
-        # Make rows and columns stretch equally
-        for i in range(3):  # 3 rows
-            grid.setRowStretch(i, 1)
-        for i in range(2):  # 2 columns
-            grid.setColumnStretch(i, 1)
-        
-        # Store prayer cards for updates
         self.prayer_cards = {}
-        
-        # Create placeholder cards (use Chorok instead of Sunrise)
-        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
-        icons = {'Fajr': '☽', 'Chorok': '☀', 'Dohr': '☉', 
-                'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
+        prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        icons = {'Fajr': '☽', 'Dohr': '☉', 'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
         
         for i, prayer in enumerate(prayers):
-            card = self.create_prayer_card_widget(prayer, icons[prayer], "--:--")
-            row = i // 2
-            col = i % 2
-            grid.addWidget(card, row, col)
-            self.prayer_cards[prayer] = card
+            row = self.create_prayer_card_widget(prayer, icons[prayer], '--:--')
+            row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            layout.addWidget(row, 1)
+            self.prayer_cards[prayer] = row
+            if i < len(prayers) - 1:
+                sep = QFrame()
+                sep.setFrameShape(QFrame.HLine)
+                sep.setStyleSheet("color: rgba(0,0,0,0.08); margin: 0px 4px;")
+                layout.addWidget(sep)
         
         return container
     
-    def create_prayer_card_widget(self, prayer_name, icon, time, is_current=False):
+    def create_prayer_card_widget(self, prayer_name, icon, time, is_current=False, inline=False):
         card = QWidget()
-        card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
+        card.setProperty("class", "prayer_card_current" if is_current else "prayer_row")
         
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(5)
-        
-        # Icon and name row
-        top_layout = QHBoxLayout()
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(0)
         
         icon_label = QLabel(icon)
-        icon_label.setProperty("class", "prayer_icon")
-        top_layout.addWidget(icon_label)
+        icon_label.setFixedWidth(40)
+        icon_label.setStyleSheet("font-size: 26px;")
+        layout.addWidget(icon_label)
         
         name_label = QLabel(self.tr_prayer(prayer_name))
         name_label.setProperty("class", "prayer_name")
-        name_label.setWordWrap(True)
-        top_layout.addWidget(name_label)
+        name_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layout.addWidget(name_label)
         
-        top_layout.addStretch()
-        layout.addLayout(top_layout)
+        dash = QLabel("—")
+        dash.setStyleSheet("color: #aaa; font-size: 14px; padding: 0 8px;")
+        dash.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        layout.addWidget(dash)
         
-        # Time
         time_label = QLabel(time)
         time_label.setProperty("class", "prayer_time")
-        time_label.setAlignment(Qt.AlignCenter)
-        time_label.setWordWrap(True)
+        time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        time_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout.addWidget(time_label)
         
         return card
@@ -2018,15 +1959,105 @@ class ModernSalahApp(QMainWindow):
         controls = QWidget()
         layout = QHBoxLayout(controls)
         layout.setContentsMargins(0, 10, 0, 0)
+        layout.setSpacing(10)
         
-        # Refresh button
+        # Refresh today button
         self.refresh_btn = QPushButton()
         self.refresh_btn.setProperty("class", "modern_button")
         self.refresh_btn.clicked.connect(self.load_prayer_times)
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         layout.addWidget(self.refresh_btn)
         
+        # Refresh full database button
+        self.refresh_db_btn = QPushButton(self.tr('refresh_db'))
+        self.refresh_db_btn.setProperty("class", "modern_button")
+        self.refresh_db_btn.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #7c4a4a,stop:1 #5a2727);")
+        self.refresh_db_btn.clicked.connect(self.refresh_full_database)
+        self.refresh_db_btn.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(self.refresh_db_btn)
+        
         return controls
+    
+    def refresh_full_database(self):
+        self.refresh_db_btn.setText(self.tr('refresh_db_updating'))
+        self.refresh_db_btn.setEnabled(False)
+        
+        self.db_worker = PrayerTimeWorker(
+            CITIES.get(self.current_city, {}).get('id', 101),
+            self.current_city
+        )
+        
+        no_internet_result = []
+        
+        def run_full_update():
+            if not self.db_worker.check_internet_connection():
+                no_internet_result.append(True)
+                return
+            try:
+                self.db_worker.update_all_cities_data()
+                self.db_worker.save_update_timestamp()
+            except Exception as e:
+                print(f"Full DB update error: {e}")
+        
+        def on_done():
+            self.refresh_db_btn.setText(self.tr('refresh_db'))
+            self.refresh_db_btn.setEnabled(True)
+            if no_internet_result:
+                info = self.get_db_info()
+                QMessageBox.warning(
+                    self,
+                    self.tr('no_internet_title'),
+                    self.tr('no_internet_msg').format(
+                        info['cities'], info['first_date'], info['last_date']
+                    )
+                )
+            else:
+                self.load_prayer_times()
+        
+        t = threading.Thread(target=run_full_update, daemon=True)
+        t.start()
+        
+        def check_done():
+            if t.is_alive():
+                QTimer.singleShot(500, check_done)
+            else:
+                on_done()
+        
+        QTimer.singleShot(500, check_done)
+    
+    def get_db_info(self):
+        db_path = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
+        result = {'cities': 0, 'first_date': 'N/A', 'last_date': 'N/A'}
+        if not os.path.exists(db_path):
+            return result
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [r[0] for r in cursor.fetchall()]
+            result['cities'] = len(tables)
+            if tables:
+                cursor.execute(f'SELECT date FROM {tables[0]} ORDER BY rowid ASC LIMIT 1')
+                first = cursor.fetchone()
+                cursor.execute(f'SELECT date FROM {tables[0]} ORDER BY rowid DESC LIMIT 1')
+                last = cursor.fetchone()
+                if first:
+                    result['first_date'] = first[0]
+                if last:
+                    result['last_date'] = last[0]
+            conn.close()
+        except Exception as e:
+            print(f"DB info error: {e}")
+        return result
+    def prompt_db_refresh(self):
+        reply = QMessageBox.question(
+            self,
+            self.tr('refresh_db_prompt_title'),
+            self.tr('refresh_db_prompt_msg'),
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.refresh_full_database()
     
     def create_menu_bar(self):
         menubar = self.menuBar()
@@ -2222,7 +2253,7 @@ class ModernSalahApp(QMainWindow):
     
     def load_prayer_times(self):
         # Show loading state in prayer cards
-        for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+        for prayer in ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
             if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
                 # Update card to show loading
                 card = self.prayer_cards[prayer]
@@ -2246,6 +2277,7 @@ class ModernSalahApp(QMainWindow):
         self.worker.data_received.connect(self.display_prayer_times)
         self.worker.offline_data_loaded.connect(self.display_offline_prayer_times)
         self.worker.error_occurred.connect(self.show_error)
+        self.worker.db_refresh_needed.connect(self.prompt_db_refresh)
         self.worker.start()
         
     def clear_prayer_layout(self):
@@ -2268,37 +2300,25 @@ class ModernSalahApp(QMainWindow):
     def _display_prayer_times_common(self, prayer_times):
         current_prayer = self.get_current_prayer()
         
-        # Calculate Chorok locally using solar formula
-        today = datetime.now()
-        calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, today)
-        
-        # Create display times: ignore scraped Sunrise, use calculated Chorok
-        display_times = {}
-        for prayer, time in prayer_times.items():
-            if prayer != 'Sunrise':  # Skip scraped Sunrise completely
-                display_times[prayer] = time
-        
-        # Add calculated Chorok
-        if calculated_chorok:
-            display_times['Chorok'] = calculated_chorok
+        display_times = {k: v for k, v in prayer_times.items() if k != 'Date'}
         
         # Update prayer cards with new times and styling
         for prayer, time in display_times.items():
             if prayer in self.prayer_cards and prayer != 'Date':
                 card = self.prayer_cards[prayer]
-                is_current = (prayer == current_prayer or (prayer == 'Chorok' and current_prayer == 'Sunrise'))
+                is_current = (prayer == current_prayer)
                 
-                # Update card styling
-                card.setProperty("class", "prayer_card_current" if is_current else "prayer_card")
-                card.setStyleSheet(self.get_modern_stylesheet())  # Refresh styles
+                card.setProperty("class", "prayer_card_current" if is_current else "prayer_row")
+                card.style().unpolish(card)
+                card.style().polish(card)
                 
-                # Update both prayer name and time text
                 for child in card.findChildren(QLabel):
                     if child.property("class") == "prayer_name":
-                        child.setText(self.tr_prayer(prayer))  # Update translated name
+                        child.setText(self.tr_prayer(prayer))
+                        child.setStyleSheet("color: white; font-weight: 700; font-size: 22px;" if is_current else "font-size: 22px;")
                     elif child.property("class") == "prayer_time":
                         child.setText(time)
-                        child.setStyleSheet("")  # Clear any error styling
+                        child.setStyleSheet("color: white; font-weight: 700; font-size: 22px;" if is_current else "font-size: 22px;")
         
         # Update refresh button
         if hasattr(self, 'refresh_btn'):
@@ -2354,6 +2374,8 @@ class ModernSalahApp(QMainWindow):
         self.title_label.setText(self.tr('app_title'))
         self.next_label.setText(self.tr('next_prayer'))
         self.refresh_btn.setText(self.tr('refresh'))
+        if hasattr(self, 'refresh_db_btn') and self.refresh_db_btn.isEnabled():
+            self.refresh_db_btn.setText(self.tr('refresh_db'))
         self.update_location_label()
         self.update_dates()
     
@@ -2494,19 +2516,15 @@ class ModernSalahApp(QMainWindow):
         menu.append(Gtk.SeparatorMenuItem.new())
 
         if self.prayer_times:
-            icons = {'Fajr': '☽', 'Chorok': '☀', 'Dohr': '☉',
-                     'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
+            icons = {'Fajr': '☽', 'Dohr': '☉', 'Asr': '☀', 'Maghreb': '☾', 'Isha': '★'}
             current_prayer = self.get_current_prayer()
-            for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
-                if prayer == 'Chorok':
-                    t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
-                elif prayer in self.prayer_times:
-                    t = self.prayer_times[prayer]
-                else:
+            for prayer in ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+                if prayer not in self.prayer_times:
                     continue
+                t = self.prayer_times[prayer]
                 icon = icons.get(prayer, '🕐')
                 name = self.tr_prayer(prayer)
-                marker = ' ◄' if (prayer == current_prayer or (prayer == 'Chorok' and current_prayer == 'Sunrise')) else ''
+                marker = ' ◄' if prayer == current_prayer else ''
                 menu.append(self._gtk_menu_item(f"{icon} {name}: {t}{marker}", callback=self.show_and_raise))
         else:
             menu.append(self._gtk_menu_item("🔄 Loading prayer times...", sensitive=False))
@@ -2515,18 +2533,15 @@ class ModernSalahApp(QMainWindow):
         next_prayer = self.get_next_prayer()
         if next_prayer and self.prayer_times:
             name = self.tr_prayer(next_prayer)
-            if next_prayer == 'Chorok':
-                t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
-            else:
-                t = self.prayer_times.get(next_prayer, '--:--')
+            t = self.prayer_times.get(next_prayer, '--:--')
             menu.append(self._gtk_menu_item(f"⏰ {self.tr('next_prayer')}: {name} {t}", callback=self.show_and_raise))
 
         menu.append(self._gtk_menu_item(f"📅 {self.get_translated_date()}", callback=self.show_and_raise))
         menu.append(Gtk.SeparatorMenuItem.new())
-        menu.append(self._gtk_menu_item("🪟 Show Main Window", callback=self.show_and_raise))
-        menu.append(self._gtk_menu_item("↻ Refresh Prayer Times", callback=self.load_prayer_times))
+        menu.append(self._gtk_menu_item(self.tr('tray_show'), callback=self.show_and_raise))
+        menu.append(self._gtk_menu_item(self.tr('tray_refresh'), callback=self.load_prayer_times))
         menu.append(Gtk.SeparatorMenuItem.new())
-        menu.append(self._gtk_menu_item("❌ Quit", callback=self.cleanup_and_quit))
+        menu.append(self._gtk_menu_item(self.tr('tray_quit'), callback=self.cleanup_and_quit))
         menu.show_all()
         self.tray_icon.set_menu(menu)
     
@@ -2538,19 +2553,12 @@ class ModernSalahApp(QMainWindow):
         now = datetime.now()
         now_secs = now.hour * 3600 + now.minute * 60 + now.second
 
-        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
 
         for prayer in prayers:
-            if prayer == 'Chorok':
-                calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, now)
-                if calculated_chorok:
-                    prayer_secs = self.parse_time(calculated_chorok) * 60
-                else:
-                    continue
-            elif prayer in self.prayer_times:
-                prayer_secs = self.parse_time(self.prayer_times[prayer]) * 60
-            else:
+            if prayer not in self.prayer_times:
                 continue
+            prayer_secs = self.parse_time(self.prayer_times[prayer]) * 60
 
             if prayer_secs > now_secs:
                 remaining = prayer_secs - now_secs
@@ -2577,20 +2585,12 @@ class ModernSalahApp(QMainWindow):
         now = datetime.now()
         current_time = now.hour * 60 + now.minute
         
-        prayers = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']
+        prayers = ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']
         
         for prayer in prayers:
-            if prayer == 'Chorok':
-                today = datetime.now()
-                calculated_chorok = OfflineSunriseCalculator.calculate_sunrise(self.current_city, today)
-                if calculated_chorok:
-                    prayer_time = self.parse_time(calculated_chorok)
-                else:
-                    continue
-            elif prayer in self.prayer_times:
-                prayer_time = self.parse_time(self.prayer_times[prayer])
-            else:
+            if prayer not in self.prayer_times:
                 continue
+            prayer_time = self.parse_time(self.prayer_times[prayer])
             
             if prayer_time > current_time:
                 return prayer
@@ -2604,10 +2604,7 @@ class ModernSalahApp(QMainWindow):
         next_prayer = self.get_next_prayer()
         if next_prayer:
             name = self.tr_prayer(next_prayer)
-            if next_prayer == 'Chorok':
-                t = OfflineSunriseCalculator.calculate_sunrise(self.current_city, datetime.now()) or '--:--'
-            else:
-                t = self.prayer_times.get(next_prayer, '--:--')
+            t = self.prayer_times.get(next_prayer, '--:--')
             countdown = self.get_countdown_to_next_prayer()
             label = f"{name} {t} {countdown}"
         else:
@@ -2617,90 +2614,75 @@ class ModernSalahApp(QMainWindow):
     def update_countdown(self):
         if not self.prayer_times:
             return
-            
+
         now = datetime.now()
-        current_time = now.hour * 60 + now.minute
         current_seconds = now.second
-        
-        prayers = [name for name in self.prayer_times.keys() if name != 'Date']
-        
-        # Always show Iqama countdown for current prayer
-        current_prayer = self.get_current_prayer()
-        if current_prayer:
-            prayer_time = self.parse_time(self.prayer_times[current_prayer])
-            iqama_delay = self.get_iqama_delay(current_prayer)
-            iqama_end_time = prayer_time + iqama_delay
-            
-            remaining = iqama_end_time - current_time
-            
-            if remaining <= 0:
-                self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(current_prayer)))
+
+        # Recalculate remaining minutes only once per minute (when seconds == 0)
+        # or on first call (when _countdown_remaining is not set)
+        if current_seconds == 0 or not hasattr(self, '_countdown_remaining'):
+            current_time = now.hour * 60 + now.minute
+            prayers = [name for name in self.prayer_times.keys() if name != 'Date']
+
+            # Iqama: current prayer and remaining minutes
+            current_prayer = self.get_current_prayer()
+            if current_prayer:
+                prayer_time = self.parse_time(self.prayer_times[current_prayer])
+                iqama_end_time = prayer_time + self.get_iqama_delay(current_prayer)
+                self._iqama_remaining = iqama_end_time - current_time
+                self._iqama_prayer = current_prayer
+            else:
+                self._iqama_remaining = -1
+                self._iqama_prayer = None
+
+            # Next prayer remaining minutes
+            next_prayer_time = None
+            for prayer in prayers:
+                if prayer in self.prayer_times:
+                    t = self.parse_time(self.prayer_times[prayer])
+                    if t > current_time:
+                        next_prayer_time = t
+                        break
+            if next_prayer_time is not None:
+                self._countdown_remaining = next_prayer_time - current_time
+            elif 'Fajr' in self.prayer_times:
+                self._countdown_remaining = (24 * 60) + self.parse_time(self.prayer_times['Fajr']) - current_time
+            else:
+                self._countdown_remaining = 0
+
+        # Every second: just subtract elapsed seconds from cached remaining minutes
+        iqama_remaining = getattr(self, '_iqama_remaining', -1)
+        iqama_prayer = getattr(self, '_iqama_prayer', None)
+        remaining = getattr(self, '_countdown_remaining', 0)
+
+        # Convert remaining minutes to H:M:S using current_seconds offset
+        def to_hms(total_minutes):
+            total_secs = total_minutes * 60 - current_seconds
+            if total_secs < 0:
+                total_secs = 0
+            h = total_secs // 3600
+            m = (total_secs % 3600) // 60
+            s = total_secs % 60
+            return h, m, s
+
+        if iqama_prayer:
+            if iqama_remaining <= 0:
+                self.iqama_countdown.setText(self.tr('iqama_passed').format(self.tr_prayer(iqama_prayer)))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
             else:
-                hours = remaining // 60
-                minutes = remaining % 60
-                seconds = 60 - current_seconds if current_seconds > 0 else 0
-                
-                if seconds == 60:
-                    seconds = 0
-                elif seconds > 0 and minutes > 0:
-                    minutes -= 1
-                
-                self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(current_prayer), hours, minutes, seconds))
+                h, m, s = to_hms(iqama_remaining)
+                self.iqama_countdown.setText(self.tr('iqama_time').format(self.tr_prayer(iqama_prayer), h, m, s))
                 self.iqama_countdown.setStyleSheet("color: #90EE90; font-weight: bold;")
         else:
             self.iqama_countdown.setText("")
-        
-        # Regular next prayer countdown
-        next_prayer_time = None
-        
-        for prayer in prayers:
-            if prayer in self.prayer_times:
-                prayer_time = self.parse_time(self.prayer_times[prayer])
-                if prayer_time > current_time:
-                    next_prayer_time = prayer_time
-                    break
-        
-        if not next_prayer_time and prayers:
-            # After last prayer, calculate time to tomorrow's first prayer (Fajr)
-            first_prayer = 'Fajr'  # Use 'Fajr' directly
-            if first_prayer in self.prayer_times:
-                fajr_time_str = self.prayer_times[first_prayer]
-                fajr_minutes = self.parse_time(fajr_time_str)
-                
-                # Calculate tomorrow's Fajr as total minutes from now
-                tomorrow_fajr_total_minutes = (24 * 60) + fajr_minutes
-                remaining = tomorrow_fajr_total_minutes - current_time
-                
-                print(f"Debug: Current time: {now.hour:02d}:{now.minute:02d} ({current_time} minutes)")
-                print(f"Debug: Today's Fajr: {fajr_time_str} ({fajr_minutes} minutes)")
-                print(f"Debug: Tomorrow's Fajr total: {tomorrow_fajr_total_minutes} minutes")
-                print(f"Debug: Time until tomorrow's Fajr: {remaining} minutes ({remaining//60}h {remaining%60}m)")
-            else:
-                remaining = 0
-        else:
-            remaining = next_prayer_time - current_time if next_prayer_time else 0
-        
-        if next_prayer_time or remaining > 0:
-            
-            hours = remaining // 60
-            minutes = remaining % 60
-            seconds = 60 - current_seconds if current_seconds > 0 else 0
-            
-            if seconds == 60:
-                seconds = 0
-            elif seconds > 0:
-                if minutes > 0:
-                    minutes -= 1
-                elif hours > 0:
-                    hours -= 1
-                    minutes = 59
-            
-            self.countdown.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+        if remaining > 0:
+            h, m, s = to_hms(remaining)
+            self.countdown.setText(f"{h:02d}:{m:02d}:{s:02d}")
             
     def show_error(self, error_message):
         # Show error in prayer cards
-        for prayer in ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
+        for prayer in ['Fajr', 'Dohr', 'Asr', 'Maghreb', 'Isha']:
             if hasattr(self, 'prayer_cards') and prayer in self.prayer_cards:
                 card = self.prayer_cards[prayer]
                 for child in card.findChildren(QLabel):
@@ -2713,6 +2695,10 @@ class ModernSalahApp(QMainWindow):
         try:
             if self.tray_icon is not None:
                 return
+
+            # Block GTK from loading snap modules that cause pthread conflicts
+            os.environ['GTK_MODULES'] = ''
+            os.environ['GTK2_RC_FILES'] = ''
 
             import gi
             gi.require_version('AyatanaAppIndicator3', '0.1')
@@ -2797,7 +2783,7 @@ class ModernSalahApp(QMainWindow):
             self.show_and_raise()
 
     def cleanup_and_quit(self):
-        print("Debug: Cleaning up and quitting...")
+        print("Cleaning up and quitting...")
         try:
             import gi
             gi.require_version('Gtk', '3.0')

@@ -7,7 +7,10 @@ from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from ultra_modern_salah import PrayerTimeWorker, CITIES, TRANSLATIONS
+import sqlite3
+from ultra_modern_salah import PrayerTimeWorker, CITIES, TRANSLATIONS, CITY_SLUGS
+
+DB_PATH = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
 import os
 
 class SalahTrayIndicator(QSystemTrayIcon):
@@ -256,26 +259,27 @@ class SalahTrayIndicator(QSystemTrayIcon):
                 self.load_prayer_times()  # Refresh prayer times
     
     def load_prayer_times(self):
-        """Load prayer times from main app's cache only"""
+        """Load prayer times from SQLite cache"""
         try:
-            # Load from main app's cities cache ONLY
-            cities_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
-            city_file = os.path.join(cities_folder, f'{self.current_city.lower()}.json')
-            
-            if os.path.exists(city_file):
-                with open(city_file, 'r', encoding='utf-8') as f:
-                    city_data = json.load(f)
-                    today = datetime.now().strftime('%d/%m')
-                    if today in city_data['prayer_times']:
-                        self.prayer_times = city_data['prayer_times'][today]
-                        print(f"Tray: Loaded cached prayer times for {self.current_city}")
-                        self.on_prayer_times_loaded(self.prayer_times)
-                        return
-            
-            # No cache available - use empty times (don't fetch)
-            print(f"Tray: No cached data for {self.current_city}, waiting for main app")
-            self.prayer_times = {}
-            
+            slug = CITY_SLUGS.get(self.current_city)
+            if not slug or not os.path.exists(DB_PATH):
+                self.prayer_times = {}
+                return
+            table = slug.replace('-', '_')
+            today = datetime.now().strftime('%d/%m')
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(f'SELECT date, fajr, dohr, asr, maghreb, isha FROM {table} WHERE date = ?', (today,))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                self.prayer_times = {'Date': row[0], 'Fajr': row[1], 'Dohr': row[2],
+                                     'Asr': row[3], 'Maghreb': row[4], 'Isha': row[5]}
+                print(f"Tray: Loaded prayer times for {self.current_city}")
+                self.on_prayer_times_loaded(self.prayer_times)
+            else:
+                print(f"Tray: No data for {self.current_city} today, waiting for main app")
+                self.prayer_times = {}
         except Exception as e:
             print(f"Tray: Error loading prayer times: {e}")
             self.prayer_times = {}

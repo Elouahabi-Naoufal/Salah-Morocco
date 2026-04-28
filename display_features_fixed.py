@@ -2,6 +2,7 @@
 import sys
 import os
 import json
+import sqlite3
 import calendar
 from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
@@ -9,14 +10,36 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
 # Import from main app
-from ultra_modern_salah import TRANSLATIONS, CITIES
+from ultra_modern_salah import TRANSLATIONS, CITIES, CITY_SLUGS
+
+DB_PATH = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
+
+def _load_city_prayer_times(city_name):
+    """Load all prayer times for a city from SQLite as {date: {prayer: time}}"""
+    try:
+        slug = CITY_SLUGS.get(city_name)
+        if not slug or not os.path.exists(DB_PATH):
+            return {}
+        table = slug.replace('-', '_')
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f'SELECT date, fajr, dohr, asr, maghreb, isha FROM {table}')
+        rows = cursor.fetchall()
+        conn.close()
+        return {
+            r[0]: {'Date': r[0], 'Fajr': r[1], 'Dohr': r[2],
+                   'Asr': r[3], 'Maghreb': r[4], 'Isha': r[5]}
+            for r in rows
+        }
+    except Exception as e:
+        print(f"Error loading prayer times for {city_name}: {e}")
+    return {}
 
 class MonthlyCalendarDialog(QDialog):
     def __init__(self, current_city, current_language, parent=None):
         super().__init__(parent)
         self.current_city = current_city
         self.current_language = current_language
-        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
         self.current_date = datetime.now()
         self.init_ui()
         self.load_monthly_data()
@@ -165,15 +188,7 @@ class MonthlyCalendarDialog(QDialog):
                 row += 1
     
     def load_city_data(self):
-        try:
-            city_file = os.path.join(self.data_folder, f'{self.current_city.lower()}.json')
-            if os.path.exists(city_file):
-                with open(city_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('prayer_times', {})
-        except Exception as e:
-            print(f"Error loading city data: {e}")
-        return {}
+        return _load_city_prayer_times(self.current_city)
     
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)
@@ -189,7 +204,6 @@ class WeeklyScheduleDialog(QDialog):
         super().__init__(parent)
         self.current_city = current_city
         self.current_language = current_language
-        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
         self.current_date = datetime.now()
         # Get start of week (Monday)
         self.week_start = self.current_date - timedelta(days=self.current_date.weekday())
@@ -326,15 +340,7 @@ class WeeklyScheduleDialog(QDialog):
                     self.weekly_table.setItem(i, col, no_data_item)
     
     def load_city_data(self):
-        try:
-            city_file = os.path.join(self.data_folder, f'{self.current_city.lower()}.json')
-            if os.path.exists(city_file):
-                with open(city_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('prayer_times', {})
-        except Exception as e:
-            print(f"Error loading city data: {e}")
-        return {}
+        return _load_city_prayer_times(self.current_city)
     
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)
@@ -350,7 +356,6 @@ class TimezoneViewDialog(QDialog):
         super().__init__(parent)
         self.current_city = current_city
         self.current_language = current_language
-        self.data_folder = os.path.join(os.path.expanduser('~'), '.salah_times', 'cities')
         # Default major cities for comparison
         self.selected_cities = ['Tangier', 'Casablanca', 'Rabat', 'Marrakech', 'Fes', 'Agadir']
         if self.current_city not in self.selected_cities:
@@ -487,15 +492,7 @@ class TimezoneViewDialog(QDialog):
                     self.timezone_table.setItem(row, col, no_data_item)
     
     def load_city_data(self, city):
-        try:
-            city_file = os.path.join(self.data_folder, f'{city.lower()}.json')
-            if os.path.exists(city_file):
-                with open(city_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('prayer_times', {})
-        except Exception as e:
-            print(f"Error loading city data for {city}: {e}")
-        return {}
+        return _load_city_prayer_times(city)
     
     def tr(self, key):
         return TRANSLATIONS[self.current_language].get(key, key)

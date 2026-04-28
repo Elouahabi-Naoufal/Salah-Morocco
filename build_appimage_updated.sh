@@ -132,10 +132,12 @@ cp SalahTimes.AppDir/salah-times.desktop SalahTimes.AppDir/usr/share/application
 echo "🏃 Creating AppRun..."
 cat > SalahTimes.AppDir/AppRun << 'EOF'
 #!/bin/bash
-HERE="$(dirname "$(readlink -f "${0}")")"
+HERE="$(dirname "$(readlink -f "${0}")")" 
 export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 export GI_TYPELIB_PATH="${HERE}/usr/lib/girepository-1.0:/usr/lib/girepository-1.0:/usr/lib/x86_64-linux-gnu/girepository-1.0"
+export GSETTINGS_BACKEND=memory
+export GSETTINGS_SCHEMA_DIR=/usr/share/glib-2.0/schemas
 exec "${HERE}/usr/bin/SalahTimes" "$@"
 EOF
 chmod +x SalahTimes.AppDir/AppRun
@@ -159,6 +161,11 @@ EOF
 # Copy icon
 cp SalahTimes.AppDir/salah-times.svg SalahTimes.AppDir/usr/share/icons/hicolor/256x256/apps/
 cp SalahTimes.AppDir/salah-times.svg SalahTimes.AppDir/
+
+# Strip bundled glib schemas to force use of host schemas
+echo "🧹 Removing bundled glib schemas..."
+rm -rf SalahTimes.AppDir/usr/share/glib-2.0/schemas/
+rm -rf SalahTimes.AppDir/usr/lib/python*/site-packages/gi/schemas/ 2>/dev/null || true
 
 # Build AppImage
 echo "📦 Building AppImage..."
