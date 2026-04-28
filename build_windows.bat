@@ -1,33 +1,49 @@
 @echo off
-echo Building Windows executable...
-
-REM Create virtual environment
-python -m venv venv_windows
-call venv_windows\Scripts\activate
-
-REM Install dependencies
-pip install -r requirements_simple.txt
-pip install pyinstaller
+echo 🚀 Building Salah Times Windows EXE...
 
 REM Clean previous builds
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
+if exist venv_windows rmdir /s /q venv_windows
 
-REM Create Windows executable using spec file
-pyinstaller salah_times_windows.spec
+REM Create virtual environment
+echo 📦 Setting up virtual environment...
+python -m venv venv_windows
+call venv_windows\Scripts\activate
+
+REM Install dependencies
+echo 📥 Installing dependencies...
+pip install --upgrade pip
+pip install PyQt5 requests beautifulsoup4 pyinstaller
+
+REM Build executable
+echo 🔨 Building executable...
+pyinstaller --noconfirm ^
+    --onefile ^
+    --windowed ^
+    --name SalahTimes ^
+    --add-data "app;app" ^
+    --hidden-import app.constants ^
+    --hidden-import app.database ^
+    --hidden-import app.worker ^
+    --hidden-import app.dialogs ^
+    --hidden-import app.views ^
+    --hidden-import app.window ^
+    --hidden-import PyQt5.QtPrintSupport ^
+    main.py
 
 if exist "dist\SalahTimes.exe" (
-    echo ✅ SUCCESS! Windows executable created:
-    dir dist\SalahTimes.exe
     echo.
-    echo 📁 Location: %CD%\dist\SalahTimes.exe
-    echo 🚀 Ready to run!
+    echo 🎉 SUCCESS! Windows executable created:
+    echo 📄 File: dist\SalahTimes.exe
+    for %%A in ("dist\SalahTimes.exe") do echo 📏 Size: %%~zA bytes
+    echo.
+    echo 🚀 To run: dist\SalahTimes.exe
 ) else (
     echo ❌ Build failed - executable not found
+    exit /b 1
 )
 
-REM Deactivate virtual environment
-deactivate
-
-echo Build complete!
+call deactivate
+echo ✅ Build complete!
 pause
