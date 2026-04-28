@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sys
 import os
 import json
@@ -7,11 +6,8 @@ from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-import sqlite3
-from ultra_modern_salah import PrayerTimeWorker, CITIES, TRANSLATIONS, CITY_SLUGS
-
-DB_PATH = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
-import os
+from .constants import CITIES, TRANSLATIONS
+from .database import get_today_prayer_times, DB_PATH
 
 class SalahTrayIndicator(QSystemTrayIcon):
     def __init__(self, parent=None):
@@ -669,7 +665,7 @@ class SalahTrayIndicator(QSystemTrayIcon):
         try:
             # Launch the main application
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            main_app_path = os.path.join(script_dir, 'ultra_modern_salah.py')
+            main_app_path = os.path.join(script_dir, '..', 'main.py')
             subprocess.Popen([sys.executable, main_app_path])
         except Exception as e:
             self.showMessage("Error", f"Could not open main app: {e}", QSystemTrayIcon.Critical)
