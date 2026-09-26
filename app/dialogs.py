@@ -849,7 +849,8 @@ class SettingsDialog(QDialog):
             if only_country and fr != only_country:
                 continue
             hay = [_norm(d.get('en', '')), _norm(d.get('ar', '')),
-                   _norm(d.get('fr', '')), _norm(d.get('country', ''))]
+                   _norm(d.get('fr', '')), _norm(d.get('es', '')),
+                   _norm(d.get('country', ''))]
             hay += [_norm(COUNTRIES.get(fr, {}).get(l, '')) for l in ('en', 'ar', 'fr')]
             if not q or any(q in h for h in hay):
                 by_country.setdefault(fr, []).append(key)
@@ -889,7 +890,7 @@ class SettingsDialog(QDialog):
         
     def get_city_key_from_translated(self, translated_name):
         for key, city_data in CITIES.items():
-            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr')):
+            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr'), city_data.get('es')):
                 return key
         return translated_name
         
@@ -1165,7 +1166,8 @@ class CitySelectionDialog(QDialog):
             if only_country and fr != only_country:
                 continue
             hay = [_norm(d.get('en', '')), _norm(d.get('ar', '')),
-                   _norm(d.get('fr', '')), _norm(d.get('country', ''))]
+                   _norm(d.get('fr', '')), _norm(d.get('es', '')),
+                   _norm(d.get('country', ''))]
             hay += [_norm(COUNTRIES.get(fr, {}).get(l, '')) for l in ('en', 'ar', 'fr')]
             if not q or any(q in h for h in hay):
                 by_country.setdefault(fr, []).append(key)
@@ -1208,7 +1210,7 @@ class CitySelectionDialog(QDialog):
         
     def get_city_key_from_translated(self, translated_name):
         for key, city_data in CITIES.items():
-            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr')):
+            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr'), city_data.get('es')):
                 return key
         return translated_name
         
