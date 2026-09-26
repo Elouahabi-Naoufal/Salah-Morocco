@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import requests
 import json
@@ -8,6 +9,46 @@ from .constants import CITIES, CITY_SLUGS, BASE_URL, SCRAPER_HEADERS
 
 DB_PATH = os.path.join(os.path.expanduser('~'), '.salah_times', 'salah.db')
 CONFIG_DIR = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
+
+_DATE_RE = re.compile(r'(\d{1,2}/\d{1,2})')
+_TIME_RE = re.compile(r'^\d{1,2}:\d{2}$')
+
+
+def _norm_date(raw):
+    """'Vendredi 25/09 Aujourd'hui' / '25/09 Aujourd'hui' -> '25/09'."""
+    m = _DATE_RE.search(raw or '')
+    return m.group(1) if m else (raw or '').strip()
+
+
+def _pick_month_table(soup):
+    """Largest 6-column prayer table.
+
+    New yabiladi layout (2026-09): 3x table.prayer-table (vertical today,
+    7-day forecast, full month). We want the full-month one.
+    """
+    best, best_rows = None, 0
+    for t in soup.select('table.prayer-table'):
+        rows = t.select('tr')
+        if len(rows) <= 1:
+            continue
+        if len(rows[0].select('th, td')) < 6:
+            continue
+        if len(rows) > best_rows:
+            best_rows, best = len(rows), t
+    if best is not None:
+        return best
+    legacy = soup.select_one('table.prayer')
+    if legacy is not None and len(legacy.select('tr')) > 1:
+        return legacy
+    for t in soup.select('table'):
+        rows = t.select('tr')
+        if len(rows) <= 1:
+            continue
+        if len(rows[0].select('th, td')) < 6:
+            continue
+        if len(rows) > best_rows:
+            best_rows, best = len(rows), t
+    return best
 
 
 def get_today_prayer_times(city_name):
@@ -75,15 +116,18 @@ def update_all_cities():
             resp = requests.get(url, headers=SCRAPER_HEADERS, timeout=10)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, 'html.parser')
-            prayer_table = soup.find('table', class_='prayer')
+            prayer_table = _pick_month_table(soup)
             if not prayer_table:
                 print(f'SKIP {city_name} - table not found')
                 continue
             rows = []
             for tr in prayer_table.find_all('tr')[1:]:
                 cells = [td.get_text(strip=True) for td in tr.find_all('td')]
-                if cells and len(cells) >= 6:
-                    rows.append(cells[:6])
+                if len(cells) >= 6:
+                    date = _norm_date(cells[0])
+                    times = cells[1:6]
+                    if all(_TIME_RE.match(t or '') for t in times):
+                        rows.append([date] + times)
             cursor.execute(f'DELETE FROM {table}')
             cursor.executemany(
                 f'INSERT INTO {table} (date, fajr, dohr, asr, maghreb, isha) VALUES (?, ?, ?, ?, ?, ?)',
