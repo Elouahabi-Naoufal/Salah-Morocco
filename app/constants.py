@@ -9,7 +9,10 @@ TRANSLATIONS = {
         'error': '⚠️ Error: {}\n\nPlease check your internet connection\nand try refreshing.',
         'welcome': '🕌 Welcome to Salah Times',
         'select_city': 'Please select your default city for prayer times:',
+        'select_country': 'Please select your country first, then your city:',
         'search_city': 'Search for a city...',
+        'search_country_city': 'Search country or city...',
+        'back': '< Back',
         'cancel': 'Cancel',
         'set_default': 'Set as Default',
         'change_city': 'Change Default City',
@@ -54,7 +57,10 @@ TRANSLATIONS = {
         'error': '⚠️ خطأ: {}\n\nيرجى التحقق من اتصال الإنترنت\nوإعادة المحاولة.',
         'welcome': '🕌 مرحباً بك في مواقيت الصلاة',
         'select_city': 'يرجى اختيار مدينتك الافتراضية لمواقيت الصلاة:',
+        'select_country': 'يرجى اختيار البلد أولاً ثم مدينتك:',
         'search_city': 'البحث عن مدينة...',
+        'search_country_city': 'البحث عن بلد أو مدينة...',
+        'back': '< رجوع',
         'cancel': 'إلغاء',
         'set_default': 'تعيين كافتراضي',
         'change_city': 'تغيير المدينة الافتراضية',
@@ -99,7 +105,10 @@ TRANSLATIONS = {
         'error': '⚠️ Erreur: {}\n\nVeuillez verifier votre connexion Internet\net reessayer.',
         'welcome': '🕌 Bienvenue dans Horaires de Priere',
         'select_city': 'Veuillez selectionner votre ville par defaut pour les horaires de priere:',
+        'select_country': 'Veuillez sélectionner votre pays, puis votre ville :',
         'search_city': 'Rechercher une ville...',
+        'search_country_city': 'Rechercher un pays ou une ville...',
+        'back': '< Retour',
         'cancel': 'Annuler',
         'set_default': 'Definir par defaut',
         'change_city': 'Changer la ville par defaut',
@@ -993,3 +1002,61 @@ CITIES = {
     'Zaghouan': {'id': 326, 'en': 'Zaghouan', 'ar': 'Zaghouan', 'fr': 'Zaghouan', 'lat': None, 'lon': None, 'country': 'Tunisie'},
 
 }
+
+
+# ── Countries (French canonical from yabiladi) + en/ar/fr names ──
+COUNTRIES = {
+    'Afrique du sud': {'en': 'South Africa', 'ar': 'جنوب أفريقيا', 'fr': 'Afrique du sud'},
+    'Algérie': {'en': 'Algeria', 'ar': 'الجزائر', 'fr': 'Algérie'},
+    'Allemagne': {'en': 'Germany', 'ar': 'ألمانيا', 'fr': 'Allemagne'},
+    'Arabie-Saoudite': {'en': 'Saudi Arabia', 'ar': 'السعودية', 'fr': 'Arabie-Saoudite'},
+    'Australie': {'en': 'Australia', 'ar': 'أستراليا', 'fr': 'Australie'},
+    'Autriche': {'en': 'Austria', 'ar': 'النمسا', 'fr': 'Autriche'},
+    'Belgique': {'en': 'Belgium', 'ar': 'بلجيكا', 'fr': 'Belgique'},
+    'Cameroun': {'en': 'Cameroon', 'ar': 'الكاميرون', 'fr': 'Cameroun'},
+    'Canada': {'en': 'Canada', 'ar': 'كندا', 'fr': 'Canada'},
+    "Côte d'ivoire": {'en': 'Ivory Coast', 'ar': 'ساحل العاج', 'fr': "Côte d'ivoire"},
+    'Danemark': {'en': 'Denmark', 'ar': 'الدنمارك', 'fr': 'Danemark'},
+    'Egypte': {'en': 'Egypt', 'ar': 'مصر', 'fr': 'Egypte'},
+    'Emirats arabes unis': {'en': 'United Arab Emirates', 'ar': 'الإمارات العربية المتحدة', 'fr': 'Emirats arabes unis'},
+    'Espagne': {'en': 'Spain', 'ar': 'إسبانيا', 'fr': 'Espagne'},
+    'Etats-Unis': {'en': 'United States', 'ar': 'الولايات المتحدة', 'fr': 'Etats-Unis'},
+    'Finlande': {'en': 'Finland', 'ar': 'فنلندا', 'fr': 'Finlande'},
+    'France': {'en': 'France', 'ar': 'فرنسا', 'fr': 'France'},
+    'Ghana': {'en': 'Ghana', 'ar': 'غانا', 'fr': 'Ghana'},
+    'Irak': {'en': 'Iraq', 'ar': 'العراق', 'fr': 'Irak'},
+    'Irlande': {'en': 'Ireland', 'ar': 'أيرلندا', 'fr': 'Irlande'},
+    'Italie': {'en': 'Italy', 'ar': 'إيطاليا', 'fr': 'Italie'},
+    'Japon': {'en': 'Japan', 'ar': 'اليابان', 'fr': 'Japon'},
+    'Liban': {'en': 'Lebanon', 'ar': 'لبنان', 'fr': 'Liban'},
+    'Libye': {'en': 'Libya', 'ar': 'ليبيا', 'fr': 'Libye'},
+    'Mali': {'en': 'Mali', 'ar': 'مالي', 'fr': 'Mali'},
+    'Maroc': {'en': 'Morocco', 'ar': 'المغرب', 'fr': 'Maroc'},
+    'Mauritanie': {'en': 'Mauritania', 'ar': 'موريتانيا', 'fr': 'Mauritanie'},
+    'Nigéria': {'en': 'Nigeria', 'ar': 'نيجيريا', 'fr': 'Nigéria'},
+    'Norvège': {'en': 'Norway', 'ar': 'النرويج', 'fr': 'Norvège'},
+    'Nouvelle-Zélande': {'en': 'New Zealand', 'ar': 'نيوزيلندا', 'fr': 'Nouvelle-Zélande'},
+    'Pays-Bas': {'en': 'Netherlands', 'ar': 'هولندا', 'fr': 'Pays-Bas'},
+    'Qatar': {'en': 'Qatar', 'ar': 'قطر', 'fr': 'Qatar'},
+    'Royaume-Uni': {'en': 'United Kingdom', 'ar': 'المملكة المتحدة', 'fr': 'Royaume-Uni'},
+    'Sénégal': {'en': 'Senegal', 'ar': 'السنغال', 'fr': 'Sénégal'},
+    'Suède': {'en': 'Sweden', 'ar': 'السويد', 'fr': 'Suède'},
+    'Suisse': {'en': 'Switzerland', 'ar': 'سويسرا', 'fr': 'Suisse'},
+    'Syrie': {'en': 'Syria', 'ar': 'سوريا', 'fr': 'Syrie'},
+    'Tunisie': {'en': 'Tunisia', 'ar': 'تونس', 'fr': 'Tunisie'},
+}
+
+
+def tr_country(fr_name, lang):
+    """Translated country name; falls back to French."""
+    return COUNTRIES.get(fr_name, {}).get(lang, fr_name)
+
+
+def get_countries():
+    """French canonical country names in insertion order."""
+    return list(COUNTRIES.keys())
+
+
+def get_cities_by_country(fr_country):
+    """CITIES keys belonging to a country."""
+    return [k for k, v in CITIES.items() if v.get('country') == fr_country]

@@ -1,11 +1,20 @@
 import os
 import json
 import subprocess
+import unicodedata
 from datetime import datetime
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from .constants import TRANSLATIONS, CITIES
+from .constants import TRANSLATIONS, CITIES, COUNTRIES, tr_country, get_countries, get_cities_by_country
+
+
+def _norm(text):
+    """Lowercase + strip accents for tolerant cross-language matching."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text or '')
+        if unicodedata.category(c) != 'Mn'
+    ).lower()
 
 class SettingsDialog(QDialog):
     def __init__(self, current_city, current_language, parent=None):
@@ -13,6 +22,11 @@ class SettingsDialog(QDialog):
         self.current_city = current_city
         self.current_language = current_language
         self.cities = sorted(CITIES.keys())
+        # Two-step picker state: country first, then city inside it
+        self.pick_mode = 'country'
+        self.pick_country = None
+        self.pick_query = ''
+        self._shown = []
         self.config_dir = os.path.join(os.path.expanduser('~'), '.salah_times', 'config')
         self.geometry_file = os.path.join(self.config_dir, 'settings_geometry.json')
         self.iqama_config_file = os.path.join(self.config_dir, 'iqama_times.json')
@@ -329,27 +343,30 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
         
-        label = QLabel(self.tr('select_city'))
+        label = QLabel(self.tr('select_country'))
         label.setProperty("class", "section_label")
         label.setWordWrap(True)
         layout.addWidget(label)
+        self.city_section_label = label
+        
+        self.back_btn = QPushButton(self.tr('back'))
+        self.back_btn.setProperty("class", "modern_button")
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.clicked.connect(self.back_to_countries)
+        self.back_btn.setVisible(False)
+        layout.addWidget(self.back_btn)
         
         self.search_box = QLineEdit()
         self.search_box.setProperty("class", "modern_search")
-        self.search_box.setPlaceholderText(self.tr('search_city'))
+        self.search_box.setPlaceholderText(self.tr('search_country_city'))
         self.search_box.textChanged.connect(self.filter_cities)
         layout.addWidget(self.search_box)
         
         self.city_list = QListWidget()
         self.city_list.setProperty("class", "modern_list")
-        translated_cities = self.get_translated_cities()
-        self.city_list.addItems(translated_cities)
-        current_translated = CITIES[self.current_city][self.current_language]
-        try:
-            self.city_list.setCurrentRow(translated_cities.index(current_translated))
-        except ValueError:
-            self.city_list.setCurrentRow(0)
+        self.city_list.itemClicked.connect(self.on_pick_clicked)
         layout.addWidget(self.city_list, 1)
+        self.rebuild_pick_list()
         
         return section
     
@@ -785,27 +802,103 @@ class SettingsDialog(QDialog):
         return TRANSLATIONS[self.current_language]['prayers'].get(prayer_key, prayer_key)
         
     def filter_cities(self, text):
+        self.pick_query = text or ''
+        self.rebuild_pick_list()
+
+    def sorted_countries(self, fr_list):
+        lang = self.current_language
+        return sorted(fr_list, key=lambda c: tr_country(c, lang).lower())
+
+    def rebuild_pick_list(self):
+        """Country-first list; search matches countries AND cities in any language."""
+        lang = self.current_language
+        q = _norm(self.pick_query)
         self.city_list.clear()
-        translated_cities = self.get_translated_cities()
-        filtered_cities = [city for city in translated_cities if text.lower() in city.lower()]
-        self.city_list.addItems(filtered_cities)
-        if filtered_cities:
-            self.city_list.setCurrentRow(0)
+        self._shown = []
+        if self.pick_mode == 'country':
+            self.city_section_label.setText(self.tr('select_country'))
+            self.back_btn.setVisible(False)
+            matches = [c for c in get_countries() if not q or any(
+                q in _norm(COUNTRIES[c].get(l, '')) for l in ('en', 'ar', 'fr')) or q in _norm(c)]
+            for fr in self.sorted_countries(matches):
+                n = len(get_cities_by_country(fr))
+                self._shown.append(('country', fr))
+                self.city_list.addItem(f"{tr_country(fr, lang)} ({n})")
+            if not matches and q:
+                # Query hit cities but no country: show grouped city results
+                for fr, key in self.matching_cities(q, lang):
+                    self._shown.append(('city', key))
+                    self.city_list.addItem(CITIES[key][lang])
+            if self._shown:
+                self.city_list.setCurrentRow(self.preselect_country_row())
+        else:
+            self.city_section_label.setText(tr_country(self.pick_country, lang))
+            self.back_btn.setVisible(True)
+            for fr, key in self.matching_cities(q, lang, only_country=self.pick_country):
+                self._shown.append(('city', key))
+                self.city_list.addItem(CITIES[key][lang])
+            if self._shown:
+                self.city_list.setCurrentRow(0)
+
+    def matching_cities(self, q, lang, only_country=None):
+        """(country_fr, key) pairs matching q in any language, countries A-Z then cities A-Z."""
+        by_country = {}
+        for key in self.cities:
+            d = CITIES[key]
+            fr = d.get('country', '')
+            if only_country and fr != only_country:
+                continue
+            hay = [_norm(d.get('en', '')), _norm(d.get('ar', '')),
+                   _norm(d.get('fr', '')), _norm(d.get('country', ''))]
+            hay += [_norm(COUNTRIES.get(fr, {}).get(l, '')) for l in ('en', 'ar', 'fr')]
+            if not q or any(q in h for h in hay):
+                by_country.setdefault(fr, []).append(key)
+        out = []
+        for fr in self.sorted_countries(list(by_country.keys())):
+            cities = sorted(by_country[fr], key=lambda k: CITIES[k][lang].lower())
+            out += [(fr, k) for k in cities]
+        return out
+
+    def preselect_country_row(self):
+        """Row of the current city's country (country mode, empty query)."""
+        try:
+            fr = CITIES[self.current_city].get('country')
+            for i, (kind, val) in enumerate(self._shown):
+                if kind == 'country' and val == fr:
+                    return i
+        except Exception:
+            pass
+        return 0
+
+    def on_pick_clicked(self, item):
+        row = self.city_list.row(item)
+        if 0 <= row < len(self._shown):
+            kind, val = self._shown[row]
+            if kind == 'country':
+                self.pick_country = val
+                self.pick_mode = 'city'
+                self.rebuild_pick_list()
+
+    def back_to_countries(self):
+        self.pick_mode = 'country'
+        self.pick_country = None
+        self.rebuild_pick_list()
         
     def get_translated_cities(self):
         return [CITIES[city][self.current_language] for city in self.cities]
         
     def get_city_key_from_translated(self, translated_name):
         for key, city_data in CITIES.items():
-            if city_data[self.current_language] == translated_name:
+            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr')):
                 return key
         return translated_name
         
     def get_selected_city(self):
-        current_item = self.city_list.currentItem()
-        if current_item:
-            translated_name = current_item.text()
-            return self.get_city_key_from_translated(translated_name)
+        row = self.city_list.currentRow()
+        if 0 <= row < len(self._shown):
+            kind, val = self._shown[row]
+            if kind == 'city':
+                return val
         return self.current_city
         
     def get_selected_language(self):
@@ -818,6 +911,11 @@ class CitySelectionDialog(QDialog):
         self.selected_city = None
         self.language = language
         self.cities = sorted(CITIES.keys())
+        # Two-step picker state: country first, then city inside it
+        self.pick_mode = 'country'
+        self.pick_country = None
+        self.pick_query = ''
+        self._shown = []
         self.init_ui()
         
     def init_ui(self):
@@ -979,21 +1077,16 @@ class CitySelectionDialog(QDialog):
         # Search box
         self.search_box = QLineEdit()
         self.search_box.setProperty("class", "welcome_search")
-        self.search_box.setPlaceholderText(self.tr('search_city'))
+        self.search_box.setPlaceholderText(self.tr('search_country_city'))
         self.search_box.textChanged.connect(self.filter_cities)
         layout.addWidget(self.search_box)
         
-        # City list
+        # Country/city list
         self.city_list = QListWidget()
         self.city_list.setProperty("class", "welcome_list")
-        translated_cities = self.get_translated_cities()
-        self.city_list.addItems(translated_cities)
-        tangier_translated = CITIES['Tangier'][self.language]
-        try:
-            self.city_list.setCurrentRow(translated_cities.index(tangier_translated))
-        except ValueError:
-            self.city_list.setCurrentRow(0)
+        self.city_list.itemClicked.connect(self.on_pick_clicked)
         layout.addWidget(self.city_list, 1)
+        self.rebuild_pick_list()
         
         return card
     
@@ -1002,6 +1095,13 @@ class CitySelectionDialog(QDialog):
         layout = QHBoxLayout(section)
         layout.setContentsMargins(0, 10, 0, 0)
         layout.setSpacing(15)
+        
+        self.welcome_back_btn = QPushButton(self.tr('back'))
+        self.welcome_back_btn.setProperty("class", "welcome_cancel")
+        self.welcome_back_btn.clicked.connect(self.back_to_countries)
+        self.welcome_back_btn.setCursor(Qt.PointingHandCursor)
+        self.welcome_back_btn.setVisible(False)
+        layout.addWidget(self.welcome_back_btn)
         
         cancel_btn = QPushButton(self.tr('cancel'))
         cancel_btn.setProperty("class", "welcome_cancel")
@@ -1018,12 +1118,87 @@ class CitySelectionDialog(QDialog):
         return section
         
     def filter_cities(self, text):
+        self.pick_query = text or ''
+        self.rebuild_pick_list()
+
+    def sorted_countries(self, fr_list):
+        return sorted(fr_list, key=lambda c: tr_country(c, self.language).lower())
+
+    def rebuild_pick_list(self):
+        """Country-first list; search matches countries AND cities in any language."""
+        lang = self.language
+        q = _norm(self.pick_query)
         self.city_list.clear()
-        translated_cities = self.get_translated_cities()
-        filtered_cities = [city for city in translated_cities if text.lower() in city.lower()]
-        self.city_list.addItems(filtered_cities)
-        if filtered_cities:
-            self.city_list.setCurrentRow(0)
+        self._shown = []
+        back_btn = getattr(self, 'welcome_back_btn', None)
+        if self.pick_mode == 'country':
+            if back_btn is not None:
+                back_btn.setVisible(False)
+            matches = [c for c in get_countries() if not q or any(
+                q in _norm(COUNTRIES[c].get(l, '')) for l in ('en', 'ar', 'fr')) or q in _norm(c)]
+            for fr in self.sorted_countries(matches):
+                n = len(get_cities_by_country(fr))
+                self._shown.append(('country', fr))
+                self.city_list.addItem(f"{tr_country(fr, lang)} ({n})")
+            if not matches and q:
+                for fr, key in self.matching_cities(q):
+                    self._shown.append(('city', key))
+                    self.city_list.addItem(CITIES[key][lang])
+            if self._shown:
+                self.city_list.setCurrentRow(self.preselect_country_row())
+        else:
+            if back_btn is not None:
+                back_btn.setVisible(True)
+            for fr, key in self.matching_cities(q, only_country=self.pick_country):
+                self._shown.append(('city', key))
+                self.city_list.addItem(CITIES[key][lang])
+            if self._shown:
+                self.city_list.setCurrentRow(0)
+
+    def matching_cities(self, q, only_country=None):
+        """(country_fr, key) pairs matching q in any language, countries then cities A-Z."""
+        lang = self.language
+        by_country = {}
+        for key in self.cities:
+            d = CITIES[key]
+            fr = d.get('country', '')
+            if only_country and fr != only_country:
+                continue
+            hay = [_norm(d.get('en', '')), _norm(d.get('ar', '')),
+                   _norm(d.get('fr', '')), _norm(d.get('country', ''))]
+            hay += [_norm(COUNTRIES.get(fr, {}).get(l, '')) for l in ('en', 'ar', 'fr')]
+            if not q or any(q in h for h in hay):
+                by_country.setdefault(fr, []).append(key)
+        out = []
+        for fr in self.sorted_countries(list(by_country.keys())):
+            cities = sorted(by_country[fr], key=lambda k: CITIES[k][lang].lower())
+            out += [(fr, k) for k in cities]
+        return out
+
+    def preselect_country_row(self):
+        """Row of Tangier's country (country mode, first show)."""
+        try:
+            fr = CITIES['Tangier'].get('country')
+            for i, (kind, val) in enumerate(self._shown):
+                if kind == 'country' and val == fr:
+                    return i
+        except Exception:
+            pass
+        return 0
+
+    def on_pick_clicked(self, item):
+        row = self.city_list.row(item)
+        if 0 <= row < len(self._shown):
+            kind, val = self._shown[row]
+            if kind == 'country':
+                self.pick_country = val
+                self.pick_mode = 'city'
+                self.rebuild_pick_list()
+
+    def back_to_countries(self):
+        self.pick_mode = 'country'
+        self.pick_country = None
+        self.rebuild_pick_list()
         
     def tr(self, key):
         return TRANSLATIONS[self.language].get(key, key)
@@ -1033,13 +1208,14 @@ class CitySelectionDialog(QDialog):
         
     def get_city_key_from_translated(self, translated_name):
         for key, city_data in CITIES.items():
-            if city_data[self.language] == translated_name:
+            if translated_name in (city_data.get('en'), city_data.get('ar'), city_data.get('fr')):
                 return key
         return translated_name
         
     def get_selected_city(self):
-        current_item = self.city_list.currentItem()
-        if current_item:
-            translated_name = current_item.text()
-            return self.get_city_key_from_translated(translated_name)
+        row = self.city_list.currentRow()
+        if 0 <= row < len(self._shown):
+            kind, val = self._shown[row]
+            if kind == 'city':
+                return val
         return 'Tangier'
